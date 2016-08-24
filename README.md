@@ -1,2 +1,2 @@
-#Musicbot
-###A bot for Slack
+#UtilityBot
+###A multi-purpose bot for Slack
