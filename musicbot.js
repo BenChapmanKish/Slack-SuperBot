@@ -11,6 +11,7 @@ const YouTube = require('youtube-node'),
     readJson = require("r-json");
 
 var yt = new YouTube();
+var playlist;
 
 const CREDENTIALS = readJson(__dirname+"/../credentials.json");
 
@@ -23,5 +24,15 @@ yt.search('Mouth Sounds', 1, function(error, result) {
   }
   else {
     console.log(JSON.stringify(result, null, 2));
+
+    id = result.items[0].id.playlistId;
+    yt.getPlayListsItemsById(id, function(error, result) {
+		if (error) {
+	  	  console.log(error);
+	  	}
+	  	else {
+	  	  console.log(JSON.stringify(result, null, 2));
+	  	}
+	});
   }
 });
