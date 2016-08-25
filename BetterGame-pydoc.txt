@@ -1,0 +1,123 @@
+Help on module BetterGame:
+
+NAME
+    BetterGame
+
+FILE
+    /export/mlrg/bchapm02/BetterGame.py
+
+DESCRIPTION
+    BetterGame:
+    Ben made several significant improvements
+    over Toshi's game that quoted Professor Oak
+    once, then slept for eternity.
+
+CLASSES
+    __builtin__.object
+        TimeSleepQuotePrinter
+            ProfessorOakQuoter
+    
+    class ProfessorOakQuoter(TimeSleepQuotePrinter)
+     |  A modified TimeSleepQuotePrinter that specifically quotes Professor Oak.
+     |  
+     |  Method resolution order:
+     |      ProfessorOakQuoter
+     |      TimeSleepQuotePrinter
+     |      __builtin__.object
+     |  
+     |  Methods defined here:
+     |  
+     |  __init__(self, time_interval=60, join_char='\n\t')
+     |  
+     |  mainLoop(self)
+     |  
+     |  ----------------------------------------------------------------------
+     |  Methods inherited from TimeSleepQuotePrinter:
+     |  
+     |  __eq__(self, other)
+     |      # Determine equality
+     |  
+     |  __getitem__(self, key)
+     |  
+     |  __len__(self)
+     |      # Allow referencing as a container
+     |  
+     |  __ne__(self, other)
+     |  
+     |  __repr__(self)
+     |      # For debugging purposes
+     |  
+     |  __setitem__(self, key, value)
+     |  
+     |  __str__ = __repr__(self)
+     |      # For debugging purposes
+     |  
+     |  addQuote(self, *quote)
+     |      # Convenient protected methods for modifying the quote container
+     |  
+     |  getRandomQuote(self)
+     |  
+     |  waitTime(self, wait_time=None)
+     |      # Wait for the time
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data descriptors inherited from TimeSleepQuotePrinter:
+     |  
+     |  __dict__
+     |      dictionary for instance variables (if defined)
+     |  
+     |  __weakref__
+     |      list of weak references to the object (if defined)
+    
+    class TimeSleepQuotePrinter(__builtin__.object)
+     |  This class prints a random quote at regular intervals.
+     |  
+     |  Methods defined here:
+     |  
+     |  __eq__(self, other)
+     |      # Determine equality
+     |  
+     |  __getitem__(self, key)
+     |  
+     |  __init__(self, time_interval=60, join_char=' ')
+     |  
+     |  __len__(self)
+     |      # Allow referencing as a container
+     |  
+     |  __ne__(self, other)
+     |  
+     |  __repr__(self)
+     |      # For debugging purposes
+     |  
+     |  __setitem__(self, key, value)
+     |  
+     |  __str__ = __repr__(self)
+     |  
+     |  addQuote(self, *quote)
+     |      # Convenient protected methods for modifying the quote container
+     |  
+     |  getRandomQuote(self)
+     |  
+     |  mainLoop(self)
+     |      Perform the instance's main loops, by
+     |      printing a random quote from the internal
+     |      list of quotes, then sleeping for the time
+     |      interval specified when itinialized.
+     |  
+     |  waitTime(self, wait_time=None)
+     |      # Wait for the time
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data descriptors defined here:
+     |  
+     |  __dict__
+     |      dictionary for instance variables (if defined)
+     |  
+     |  __weakref__
+     |      list of weak references to the object (if defined)
+
+FUNCTIONS
+    main()
+        Create Prof. Oak quotes and run the main loop.
+
+
