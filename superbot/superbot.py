@@ -12,7 +12,7 @@ class SuperBot(object):
 	__str__ = __repr__
 
 	def process_hello(self, data):
-		print "\033[42m{} connected to Slack\033[0m".format(self)
+		print str(self)+" connected to Slack"
 
 	def do_command(self, data, command, body):
 		raise NotImplementedError
@@ -20,11 +20,21 @@ class SuperBot(object):
 	def process_message(self, data):
 		if data.has_key('text'):
 			text = data['text']
-			command = text[:text.index(' ')]
-			body = text[text.index(' ')+1:]
-			if command not in self.commands:
-				return
+			
+			if text.startswith('<@U249VP6H2>'):
+				# @superbot
+				start=11
+			elif text.startswith('superbot'):
+				start=7
+			else: return
 
-			print "Command \033[36m{}\033[0m: \033[33m{}\033[0m".format(command, body)
-			self.do_command(data, command, body)
-			print
+			# Ignore first char after mention
+			text=text[start+2:]
+			print text
+			if ' ' in text:
+				command = text[:text.index(' ')]
+				body = text[text.index(' ')+1:]
+				if command in self.commands:
+					print "Command \033[36m{}\033[0m: \033[33m{}\033[0m".format(command, body)
+					self.do_command(data, command, body)
+					print
