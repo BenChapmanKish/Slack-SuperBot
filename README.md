@@ -10,8 +10,15 @@ Dependencies:
 
 -----
 
+###Using up the bot
+
+* Download and configure `python-rtmbot`
+* Symbolically link `superbot.py` from this repo to `python-rtmbot/superbot/superbot.py`
+* From the `python-rtmbot` directory, run `python rtmbot.py`
+
+-----
+
 Features to add:
 
-* Posting to anonymous channel (use unique identifiers)
 * Find random song from youtube playlist
 * Add your suggestions here
