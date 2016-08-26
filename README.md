@@ -1,4 +1,4 @@
-#UtilityBot
+#SuperBot
 ###A multi-purpose bot for Slack
 
 This bot will connect to slack and have many different tasks it can perform.
