@@ -1,4 +1,5 @@
 # coding: utf-8
+# Ben Chapman-Kish
 
 import sys, os
 import time
@@ -6,12 +7,13 @@ import hashlib
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(this_dir)
-from superbot import SuperBot
+from basebot import BaseBot
 
 crontable = []
 outputs = []
+api_calls = []
 
-class AnonBot(SuperBot):
+class AnonBot(BaseBot):
 	def __init__(self, verbose=True):
 		self.send_commands = ('anon', 'anon-say', 'anon-send')
 		self.regen_commands = ('anon-regen', 'anon-reset', 'anon-clear')
@@ -20,7 +22,7 @@ class AnonBot(SuperBot):
 		
 		self.send_chat = '#anon-chat'
 		self.regen_time = 20*60 # 20 minutes
-		self.hash_cutoff = 8
+		self.hash_cutoff = 10
 
 		self.users = {}
 
@@ -35,8 +37,24 @@ class AnonBot(SuperBot):
 		if command in self.send_commands:
 			identifier = self.get_unique_identifier(data['user'])
 
-			output = "*{}:* {}".format(identifier, body)
-			outputs.append([self.send_chat, output])
+			fallback = "*{}:* {}".format(identifier, body)
+			author_name = identifier
+			color = identifier[:6]
+			text = body
+
+			attachment = '''[
+				{
+					"fallback": "'''+fallback+'''",
+					"color": "#'''+color+'''",
+					"text": "'''+text+'''"
+				}
+			]'''
+
+			kwargs = {'channel': self.send_chat, 'username': 'anonymous', 'as_user': 'false', 'attachments': attachment}
+			api_calls.append(['chat.postMessage', kwargs])
+			
+			#output = "*{}:* {}".format(identifier, body)
+			#outputs.append([self.send_chat, output])
 
 			self.debug("Unique identifier for \033[32m{}\033[0m: \033[35m{}\033[0m".format(data['user'], identifier))
 

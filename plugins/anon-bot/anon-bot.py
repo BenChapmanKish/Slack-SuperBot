@@ -1,1 +1,0 @@
-../../superbot/anon-bot.py

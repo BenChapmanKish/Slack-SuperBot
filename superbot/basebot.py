@@ -2,14 +2,15 @@
 
 crontable = []
 outputs = []
+api_calls = []
 
-class SuperBot(object):
+class BaseBot(object):
 	def __init__(self, commands, verbose=True):
 		self.commands = commands
 		self.verbose = verbose
 
 	def __repr__(self):
-		return "SuperBot(commands={}, verbose={})".format(self.commands, self.verbose)
+		return "BaseBot(commands={}, verbose={})".format(self.commands, self.verbose)
 	__str__ = __repr__
 
 	def debug(self, text=None, ansi_code=None, force=False):
