@@ -51,3 +51,7 @@
 .DS_Store
 
 ## User additions
+#
+rtmbot.conf
+credentials.json
+*.log

@@ -84,6 +84,7 @@ def process_hello(data):
 	anonbot.process_hello(data)
 
 def process_message(data):
+	print data
 	anonbot.process_message(data)
 
 	
