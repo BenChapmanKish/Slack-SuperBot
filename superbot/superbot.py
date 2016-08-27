@@ -4,15 +4,26 @@ crontable = []
 outputs = []
 
 class SuperBot(object):
-	def __init__(self, commands):
+	def __init__(self, commands, verbose=True):
 		self.commands = commands
+		self.verbose = verbose
 
 	def __repr__(self):
-		return "SuperBot(commands={})".format(self.commands)
+		return "SuperBot(commands={}, verbose={})".format(self.commands, self.verbose)
 	__str__ = __repr__
 
+	def debug(self, text=None, ansi_code=None, force=False):
+		if self.verbose or force:
+			if text:
+				if ansi_code:
+					print '\033['+str(ansi_code)+'m' + text + '\033[0m'
+				else:
+					print text
+			else:
+				print
+
 	def process_hello(self, data):
-		print str(self)+" connected to Slack"
+		self.debug(type(self).__name__ + " connected to Slack", 42)
 
 	def do_command(self, data, command, body):
 		raise NotImplementedError
@@ -35,6 +46,6 @@ class SuperBot(object):
 				command = text[:text.index(' ')]
 				body = text[text.index(' ')+1:]
 				if command in self.commands:
-					print "Command \033[36m{}\033[0m: \033[33m{}\033[0m".format(command, body)
+					self.debug("Command \033[36m{}\033[0m: \033[33m{}\033[0m".format(command, body))
 					self.do_command(data, command, body)
-					print
+					self.debug()

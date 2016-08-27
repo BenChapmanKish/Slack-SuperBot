@@ -3,22 +3,23 @@
 
 This bot will connect to slack and have many different tasks it can perform.
 
-Dependencies:
+#Dependencies
 
-* [@slackhq: python-rtmbot](https://github.com/slackhq/python-rtmbot)
+* [@slackhq: python-slackclient](https://github.com/slackhq/python-slackclient)
 * [@google: gdata-python-client](https://github.com/google/gdata-python-client)
 
 -----
 
-###Using up the bot
+#Usage
 
-* Download and configure `python-rtmbot`
-* Symbolically link `superbot.py` from this repo to `python-rtmbot/superbot/superbot.py`
-* From the `python-rtmbot` directory, run `python rtmbot.py`
+* Download and configure `python-slackclient`
+* Make sure all bots in `superbot/` are symbolically linked to be in `plugins/$bot_name/$bot_name.py`
+* Run `rtmbot.py`
 
 -----
 
-Features to add:
+###Features to add
 
 * Find random song from youtube playlist
+* Periodic annoying Prof Oak quoter
 * Add your suggestions here

@@ -5,10 +5,15 @@ import glob
 import os
 import time
 import logging
+import argparse
+import yaml
 
 from slackclient import SlackClient
+#from slackclient._slackrequest import SlackRequest
 
 sys.dont_write_bytecode = True
+
+this_dir = os.path.dirname(os.path.realpath(__file__))
 
 
 class RtmBot(object):
@@ -223,3 +228,25 @@ class Job(object):
 
 class UnknownChannel(Exception):
     pass
+
+
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-c',
+        '--config',
+        help='Full path to config file.',
+        metavar='path'
+    )
+    return parser.parse_args()
+
+# load args with config path
+args = parse_args()
+config = yaml.load(open(os.path.join(this_dir, (args.config or 'rtmbot.conf'))))
+bot = RtmBot(config)
+try:
+    bot.start()
+except KeyboardInterrupt:
+    sys.exit(0)

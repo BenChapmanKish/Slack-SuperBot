@@ -3,6 +3,7 @@
 import sys, os
 import time
 import hashlib
+
 this_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(this_dir)
 from superbot import SuperBot
@@ -11,80 +12,66 @@ crontable = []
 outputs = []
 
 class AnonBot(SuperBot):
-	def __init__(self, commands):
-		SuperBot.__init__(self, commands)
-		self.chat = '#anon-chat'
-		self.recent_file = os.path.join(this_dir, 'anon-recent.txt')
+	def __init__(self, verbose=True):
+		self.send_commands = ('anon', 'anon-say', 'anon-send')
+		self.regen_commands = ('anon-regen', 'anon-reset', 'anon-clear')
+
+		SuperBot.__init__(self, self.send_commands + self.regen_commands, verbose)
+		
+		self.send_chat = '#anon-chat'
 		self.regen_time = 20*60 # 20 minutes
+		self.hash_cutoff = 8
+
+		self.users = {}
 
 	def __repr__(self):
-		return "AnonBot(commands={}, chat='{}', recent_file='{}', regen_time={})".format(self.commands, self.chat, self.recent_file, self.regen_time)
+		return "AnonBot(send_commands={}, regen_commands={}, send_chat='{}', hash_cutoff={}, regen_time={}, self.users={}, verbose={})"\
+			.format(self.send_commands, self.regen_commands, self.send_chat, self.hash_cutoff, self.regen_time, self.users, self.verbose)
 	__str__ = __repr__
 
 	def do_command(self, data, command, body):
-		identifier = self.get_unique_identifier(data['user'])
-		print "Unique identifier for \033[32m{}\033[0m: \033[35m{}\033[0m".format(data['user'], identifier)
-		output = "*{}:* {}".format(identifier, body)
-		outputs.append([self.chat, output])
+		self.remove_expired_identifiers()
 
-	def get_unique_identifier(self, userID):
-		nowTime = int(time.time())
-		
-		with open(self.recent_file) as f:
-			lines = f.readlines()
+		if command in self.send_commands:
+			identifier = self.get_unique_identifier(data['user'])
 
-		newgen = True
-		i=0
+			output = "*{}:* {}".format(identifier, body)
+			outputs.append([self.send_chat, output])
 
-		while i < len(lines):
-			# Ignore comments
-			line = lines[i].lstrip()
-			if len(line) == 0 or line[0] == '#':
-				i+=1
-				continue
+			self.debug("Unique identifier for \033[32m{}\033[0m: \033[35m{}\033[0m".format(data['user'], identifier))
 
-			# All lines should be 3 items, space-separated
-			line = lines[i].split()
-			if not(len(line) == 3 and line[1].isdigit() and int(line[1]) < nowTime):
-				# If the line doesn't meet the format, remove it
-				lines.pop(i)
-				continue
+		elif command in self.regen_commands:
+			self.generate_identifier(data['user'])
 
-			thisID, lastTime, identifier = line[0], int(line[1]), line[2]
-			
-			# Find the user id, if it already exists
-			if thisID == userID:
-				lines.pop(i)
-				# If the user has anonymously posted recently,
-				# use their existing unique identifier
-				if lastTime + self.regen_time > nowTime:
-					newgen = False
-				break
-			i+=1
+	def remove_expired_identifiers(self):
+		for userID in self.users.iterkeys():
+			lastTime = self.users[userID][0]
+			if lastTime + self.regen_time < time.time():
+				self.users.pop(userID)
 
-		if newgen:
-			m = hashlib.md5()
-			m.update(str(userID))
-			m.update(str(nowTime))
-			# Get nice and readable identifier, cutting off after 8 hex digits
-			identifier = m.hexdigest()[:8]
-		
-		newline = str(userID) + ' ' + str(nowTime) + ' ' + str(identifier)
-		lines.append(newline)
+	def generate_identifier(self, userID):
+		now = time.time()
+		m = hashlib.md5()
+		m.update(str(userID))
+		m.update(str(now))
 
-		with open(self.recent_file, 'w') as f:
-			f.write('\n'.join(lines))
-
+		# Get nice and readable identifier, cutting off after 8 hex digits
+		identifier = m.hexdigest()[:self.hash_cutoff]
+		self.users[userID] = (now, identifier)
 		return identifier
 
+	def get_unique_identifier(self, userID):
+		if self.users.has_key(userID):
+			return self.users[userID][1]
+		else:
+			return self.generate_identifier(userID)
 
-anonbot = AnonBot(('anon', 'anonymous'))
+
+
+anonbot = AnonBot()
 
 def process_hello(data):
 	anonbot.process_hello(data)
 
 def process_message(data):
-	print data
 	anonbot.process_message(data)
-
-	
