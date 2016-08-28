@@ -18,7 +18,7 @@ class AnonBot(BaseBot):
 		self.send_commands = ('anon', 'anon-say', 'anon-send')
 		self.regen_commands = ('anon-regen', 'anon-reset', 'anon-clear')
 
-		SuperBot.__init__(self, self.send_commands + self.regen_commands, verbose)
+		BaseBot.__init__(self, self.send_commands + self.regen_commands, verbose)
 		
 		self.send_chat = '#anon-chat'
 		self.regen_time = 20*60 # 20 minutes
@@ -31,22 +31,19 @@ class AnonBot(BaseBot):
 			.format(self.send_commands, self.regen_commands, self.send_chat, self.hash_cutoff, self.regen_time, self.users, self.verbose)
 	__str__ = __repr__
 
-	def do_command(self, data, command, body):
+	def do_command(self, data, command, body=None):
 		self.remove_expired_identifiers()
 
-		if command in self.send_commands:
+		if command in self.send_commands and isinstance(body, basestring):
 			identifier = self.get_unique_identifier(data['user'])
 
-			fallback = "*{}:* {}".format(identifier, body)
-			author_name = identifier
-			color = identifier[:6]
-			text = body
+			fallback = "{}: {}".format(identifier, body)
 
 			attachment = '''[
 				{
 					"fallback": "'''+fallback+'''",
-					"color": "#'''+color+'''",
-					"text": "'''+text+'''"
+					"color": "#'''+identifier+'''",
+					"text": "'''+body+'''"
 				}
 			]'''
 
@@ -73,8 +70,8 @@ class AnonBot(BaseBot):
 		m.update(str(userID))
 		m.update(str(now))
 
-		# Get nice and readable identifier, cutting off after 8 hex digits
-		identifier = m.hexdigest()[:self.hash_cutoff]
+		# Get nice identifier that works as a hex color
+		identifier = m.hexdigest()[:6]
 		self.users[userID] = (now, identifier)
 		return identifier
 

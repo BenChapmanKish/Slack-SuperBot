@@ -52,6 +52,6 @@
 
 ## User additions
 
-rtmbot.conf
-credentials.json
+/rtmbot.conf
+/credentials.json
 *.log
