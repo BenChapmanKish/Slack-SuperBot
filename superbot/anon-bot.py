@@ -13,6 +13,8 @@ crontable = []
 outputs = []
 api_calls = []
 
+# To do: use im.list to determine if a message was in a DM
+
 class AnonBot(BaseBot):
 	def __init__(self, verbose=True):
 		self.send_commands = ('anon', 'anon-say', 'anon-send')

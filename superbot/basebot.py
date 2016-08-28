@@ -4,6 +4,8 @@ crontable = []
 outputs = []
 api_calls = []
 
+# To do: Replace rtmbot with a full-functioning client
+
 class BaseBot(object):
 	def __init__(self, commands, verbose=True):
 		self.commands = commands

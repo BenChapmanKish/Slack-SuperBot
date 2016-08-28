@@ -9,7 +9,6 @@ import argparse
 import yaml
 
 from slackclient import SlackClient
-#from slackclient._slackrequest import SlackRequest
 
 sys.dont_write_bytecode = True
 
@@ -126,6 +125,7 @@ class RtmBot(object):
 			plugin.do_jobs()
 
 	def load_plugins(self):
+		self.bot_plugins = []
 		for plugin in glob.glob(self.directory + '/plugins/*'):
 			sys.path.insert(0, plugin)
 			sys.path.insert(0, self.directory + '/plugins/')
@@ -231,11 +231,9 @@ class Job(object):
 		self.lastrun = 0
 		self.debug = debug
 
-	def __str__(self):
-		return "{} {} {}".format(self.function, self.interval, self.lastrun)
-
 	def __repr__(self):
-		return self.__str__()
+		return "Job(function={}, interval={}, lastrun={})".format(self.function, self.interval, self.lastrun)
+	__str__ = __repr__
 
 	def check(self):
 		if self.lastrun + self.interval < time.time():
@@ -267,11 +265,15 @@ def parse_args():
 	)
 	return parser.parse_args()
 
-# load args with config path
-args = parse_args()
-config = yaml.load(open(os.path.join(this_dir, (args.config or 'rtmbot.conf'))))
-bot = RtmBot(config)
-try:
-	bot.start()
-except KeyboardInterrupt:
-	sys.exit(0)
+def main():
+	# load args with config path
+	args = parse_args()
+	config = yaml.load(open(os.path.join(this_dir, (args.config or 'rtmbot.conf'))))
+	bot = RtmBot(config)
+	try:
+		bot.start()
+	except KeyboardInterrupt:
+		sys.exit(0)
+
+if __name__ == '__main__':
+	main()
