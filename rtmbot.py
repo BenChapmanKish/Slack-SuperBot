@@ -14,6 +14,17 @@ sys.dont_write_bytecode = True
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
+"""
+Idea for reorganizing this framework:
+
+A SuperBot class that does all the API calls and stuff
+would be created, recycling code from RtmBot.
+
+Each plugin has a function that's called when the
+slack client's rtm_read receives input. Said function
+would be passed the SuperBot instance and the event data.
+"""
+
 
 class RtmBot(object):
 	def __init__(self, config):
@@ -166,7 +177,7 @@ class Plugin(object):
 	def register_jobs(self):
 		if 'crontable' in dir(self.module):
 			for interval, function in self.module.crontable:
-				self.jobs.append(Job(interval, eval("self.module." + function), self.debug))
+				self.jobs.append(CronJob(interval, eval("self.module." + function), self.debug))
 			logging.info(self.module.crontable)
 			self.module.crontable = []
 		else:
@@ -224,7 +235,7 @@ class Plugin(object):
 		return api_calls
 
 
-class Job(object):
+class CronJob(object):
 	def __init__(self, interval, function, debug):
 		self.function = function
 		self.interval = interval
@@ -232,7 +243,7 @@ class Job(object):
 		self.debug = debug
 
 	def __repr__(self):
-		return "Job(function={}, interval={}, lastrun={})".format(self.function, self.interval, self.lastrun)
+		return "CronJob(function={}, interval={}, lastrun={})".format(self.function, self.interval, self.lastrun)
 	__str__ = __repr__
 
 	def check(self):
@@ -248,9 +259,6 @@ class Job(object):
 					logging.exception("Problem in job check: {}".format(self.function))
 			self.lastrun = time.time()
 
-
-class UnknownChannel(Exception):
-	pass
 
 
 
