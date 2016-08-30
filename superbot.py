@@ -12,7 +12,8 @@ from slackclient import SlackClient
 
 sys.dont_write_bytecode = True
 
-this_dir = os.path.dirname(os.path.realpath(__file__))
+this_dir = os.getcwd()
+#this_dir = os.path.dirname(os.path.realpath(__file__))
 
 """
 Idea for reorganizing this framework:
@@ -26,7 +27,7 @@ would be passed the SuperBot instance and the event data.
 """
 
 
-class RtmBot(object):
+class SuperBot(object):
 	def __init__(self, config):
 		'''
 			Params:
@@ -276,8 +277,8 @@ def parse_args():
 def main():
 	# load args with config path
 	args = parse_args()
-	config = yaml.load(open(os.path.join(this_dir, (args.config or 'superbot.conf'))))
-	bot = RtmBot(config)
+	config = yaml.load(open(os.path.join(this_dir, (args.config or 'superbot.yml'))))
+	bot = SuperBot(config)
 	try:
 		bot.start()
 	except KeyboardInterrupt:
