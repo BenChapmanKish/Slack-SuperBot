@@ -12,10 +12,9 @@ from slackclient import SlackClient
 
 sys.dont_write_bytecode = True
 
-this_dir = os.getcwd()
-#this_dir = os.path.dirname(os.path.realpath(__file__))
+this_dir = os.path.dirname(os.path.realpath(__file__))
 
-"""
+'''
 Idea for reorganizing this framework:
 
 A SuperBot class that does all the API calls and stuff
@@ -24,7 +23,7 @@ would be created, recycling code from RtmBot.
 Each plugin has a function that's called when the
 slack client's rtm_read receives input. Said function
 would be passed the SuperBot instance and the event data.
-"""
+'''
 
 
 class SuperBot(object):
@@ -35,9 +34,9 @@ class SuperBot(object):
 					- SLACK_TOKEN: your authentication token from Slack
 					- BASE_PATH (optional: defaults to execution directory) RtmBot will
 						look in this directory for plugins.
-					- LOGFILE (optional: defaults to rtmbot.log) The filename for logs, will
+					- LOGFILE (optional: defaults to superbot.log) The filename for logs, will
 						be stored inside the BASE_PATH directory
-					- DEBUG (optional: defaults to False) with debug enabled, RtmBot will
+					- DEBUG (optional: defaults to False) with debug enabled, SuperBot will
 						break on errors
 		'''
 		# set the config object
@@ -47,8 +46,7 @@ class SuperBot(object):
 		self.token = config.get('SLACK_TOKEN')
 
 		# set working directory for loading plugins or other files
-		working_directory = os.path.dirname(sys.argv[0])
-		self.directory = self.config.get('BASE_PATH', working_directory)
+		self.directory = self.config.get('BASE_PATH', this_dir)
 		if not self.directory.startswith('/'):
 			path = '{}/{}'.format(os.getcwd(), self.directory)
 			self.directory = os.path.abspath(path)
@@ -63,7 +61,7 @@ class SuperBot(object):
 
 		# initialize stateful fields
 		self.last_ping = 0
-		self.bot_plugins = []
+		self.plugins = []
 		self.slack_client = None
 
 	def _dbg(self, debug_string):
@@ -136,20 +134,16 @@ class SuperBot(object):
 		for plugin in self.bot_plugins:
 			plugin.do_jobs()
 
-	def load_plugins(self):
+	def find_plugins(self):
 		self.bot_plugins = []
+		sys.path.insert(0, self.directory + '/plugins/')
 		for plugin in glob.glob(self.directory + '/plugins/*'):
-			sys.path.insert(0, plugin)
-			sys.path.insert(0, self.directory + '/plugins/')
-		for plugin in glob.glob(self.directory + '/plugins/*.py') + \
-				glob.glob(self.directory + '/plugins/*/*.py'):
+			sys.path.insert(1, plugin)
+
+		for plugin in glob.glob(self.directory + '/plugins/*.py'):
 			logging.info(plugin)
 			name = plugin.split('/')[-1][:-3]
-			if name in self.config:
-				logging.info("config found for: " + name)
-			plugin_config = self.config.get(name, {})
-			plugin_config['DEBUG'] = self.debug
-			self.bot_plugins.append(Plugin(name, plugin_config))
+			self.plugins.append(name)
 
 
 class Plugin(object):
@@ -277,7 +271,12 @@ def parse_args():
 def main():
 	# load args with config path
 	args = parse_args()
-	config = yaml.load(open(os.path.join(this_dir, (args.config or 'superbot.yml'))))
+	if args.config:
+		confpath = os.path.expanduser(args.config)
+	else:
+		confpath = os.path.join(this_dir, 'superbot.yml')
+	config = yaml.load(open(confpath))
+
 	bot = SuperBot(config)
 	try:
 		bot.start()
