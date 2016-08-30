@@ -52,6 +52,7 @@
 
 ## User additions
 
-/rtmbot.conf
-/credentials.json
+/*.conf
+/*.json
+/*.yml
 *.log

@@ -53,7 +53,7 @@ class RtmBot(object):
 			self.directory = os.path.abspath(path)
 
 		# establish logging
-		log_file = config.get('LOGFILE', 'rtmbot.log')
+		log_file = config.get('LOGFILE', 'superbot.log')
 		logging.basicConfig(filename=log_file,
 							level=logging.INFO,
 							format='%(asctime)s %(message)s')
@@ -276,7 +276,7 @@ def parse_args():
 def main():
 	# load args with config path
 	args = parse_args()
-	config = yaml.load(open(os.path.join(this_dir, (args.config or 'rtmbot.conf'))))
+	config = yaml.load(open(os.path.join(this_dir, (args.config or 'superbot.conf'))))
 	bot = RtmBot(config)
 	try:
 		bot.start()
