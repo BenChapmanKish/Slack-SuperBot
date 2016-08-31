@@ -55,4 +55,5 @@
 /*.conf
 /*.json
 /*.yml
+!/config.yml
 *.log

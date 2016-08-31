@@ -6,7 +6,7 @@ import os
 import time
 import logging
 import argparse
-import yaml
+import json
 
 from slackclient import SlackClient
 
@@ -16,6 +16,7 @@ this_dir = os.path.dirname(os.path.realpath(__file__))
 
 '''
 Idea for reorganizing this framework:
+(CURRENTLY BEING IMPLEMENTED)
 
 A SuperBot class that does all the API calls and stuff
 would be created, recycling code from RtmBot.
@@ -28,36 +29,26 @@ would be passed the SuperBot instance and the event data.
 
 class SuperBot(object):
 	def __init__(self, config):
-		'''
-			Params:
-				- config (dict):
-					- SLACK_TOKEN: your authentication token from Slack
-					- BASE_PATH (optional: defaults to execution directory) RtmBot will
-						look in this directory for plugins.
-					- LOGFILE (optional: defaults to superbot.log) The filename for logs, will
-						be stored inside the BASE_PATH directory
-					- DEBUG (optional: defaults to False) with debug enabled, SuperBot will
-						break on errors
-		'''
 		# set the config object
-		self.config = config
+		self.config = json.load(open('config.json'))
 
 		# set slack token
-		self.token = config.get('SLACK_TOKEN')
+		self.tokens = json.load(open('credentials.json'))
+		self.token = self.tokens.get('slack')
 
 		# set working directory for loading plugins or other files
-		self.directory = self.config.get('BASE_PATH', this_dir)
+		self.directory = self.config.get('base_path', this_dir)
 		if not self.directory.startswith('/'):
 			path = '{}/{}'.format(os.getcwd(), self.directory)
 			self.directory = os.path.abspath(path)
 
 		# establish logging
-		log_file = config.get('LOGFILE', 'superbot.log')
+		log_file = config.get('logfile', 'superbot.log')
 		logging.basicConfig(filename=log_file,
 							level=logging.INFO,
 							format='%(asctime)s %(message)s')
 		logging.info('Initialized in: {}'.format(self.directory))
-		self.debug = self.config.get('DEBUG', False)
+		self.debug = self.config.get('debug', False)
 
 		# initialize stateful fields
 		self.last_ping = 0
@@ -135,7 +126,6 @@ class SuperBot(object):
 			plugin.do_jobs()
 
 	def find_plugins(self):
-		self.bot_plugins = []
 		sys.path.insert(0, self.directory + '/plugins/')
 		for plugin in glob.glob(self.directory + '/plugins/*'):
 			sys.path.insert(1, plugin)
@@ -147,7 +137,9 @@ class SuperBot(object):
 
 
 class Plugin(object):
-
+	"""
+	ABOUT TO BE REWRITTEN
+	"""
 	def __init__(self, name, plugin_config=None):
 		'''
 		A plugin in initialized with:
@@ -156,6 +148,7 @@ class Plugin(object):
 				Values in config:
 				- DEBUG (bool) - this will be overridden if debug is set in config for this plugin
 		'''
+		raise DeprecationWarning
 		if plugin_config is None:
 			plugin_config = {}
 		self.name = name
@@ -229,55 +222,8 @@ class Plugin(object):
 				self.module.api_calls = []
 		return api_calls
 
-
-class CronJob(object):
-	def __init__(self, interval, function, debug):
-		self.function = function
-		self.interval = interval
-		self.lastrun = 0
-		self.debug = debug
-
-	def __repr__(self):
-		return "CronJob(function={}, interval={}, lastrun={})".format(self.function, self.interval, self.lastrun)
-	__str__ = __repr__
-
-	def check(self):
-		if self.lastrun + self.interval < time.time():
-			if self.debug is True:
-				# this makes the plugin fail with stack trace in debug mode
-				self.function()
-			else:
-				# otherwise we log the exception and carry on
-				try:
-					self.function()
-				except Exception:
-					logging.exception("Problem in job check: {}".format(self.function))
-			self.lastrun = time.time()
-
-
-
-
-
-def parse_args():
-	parser = argparse.ArgumentParser()
-	parser.add_argument(
-		'-c',
-		'--config',
-		help='Full path to config file.',
-		metavar='path'
-	)
-	return parser.parse_args()
-
 def main():
-	# load args with config path
-	args = parse_args()
-	if args.config:
-		confpath = os.path.expanduser(args.config)
-	else:
-		confpath = os.path.join(this_dir, 'superbot.yml')
-	config = yaml.load(open(confpath))
-
-	bot = SuperBot(config)
+	bot = SuperBot()
 	try:
 		bot.start()
 	except KeyboardInterrupt:
