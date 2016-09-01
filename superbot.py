@@ -69,10 +69,7 @@ class SuperBot(object):
 		self.load_plugins()
 		while True:
 			for reply in self.slack_client.rtm_read():
-				self.input(reply)
-			self.crons()
-			self.output()
-			self.api_call()
+				self.event_handlers(reply)
 			self.autoping()
 			time.sleep(.1)
 
@@ -91,39 +88,30 @@ class SuperBot(object):
 			self.slack_client.server.ping()
 			self.last_ping = now
 
-	def input(self, data):
+	def event_handlers(self, data):
 		if "type" in data:
-			function_name = "process_" + data["type"]
-			self._dbg("got {}".format(function_name))
-			for plugin in self.bot_plugins:
-				plugin.register_jobs()
-				plugin.do(function_name, data)
+			self._dbg("got {}".format(data["type"]))
+			for plugin in self.plugins:
+				if self.debug:
+					plugin.handle_event(data)
+				else:
+					try:
+						plugin.handle_event(data)
+					except Exception:
+						logging.exception("problem in module {} {}".format(function_name, data))
 
-	def output(self):
-		for plugin in self.bot_plugins:
-			limiter = False
-			for output in plugin.do_output():
-				channel = self.slack_client.server.channels.find(output[0])
-				if channel is not None and output[1] is not None:
-					if limiter:
-						time.sleep(.1)
-						limiter = False
-					channel.send_message(output[1])
-					limiter = True
+	def send_message(self, channel, message=None):
+		channel = self.slack_client.server.channels.find(channel)
+		if channel is not None and message is not None:
+			channel.send_message(message)
+			return True
+		return False
 
-	def api_call(self):
-		for plugin in self.bot_plugins:
-			limiter = False
-			for api_call in plugin.do_api_calls():
-				method, kwargs = api_call
-				if limiter:
-					time.sleep(.1)
-				self.slack_client.server.api_call(method, **kwargs)
-				limiter = True
-
-	def crons(self):
-		for plugin in self.bot_plugins:
-			plugin.do_jobs()
+	def api_call(self, method, kwargs={}):
+		if method is not None:
+			self.slack_client.server.api_call(method, **kwargs)
+			return True
+		return False
 
 	def find_plugins(self):
 		sys.path.insert(0, self.directory + '/plugins/')
@@ -140,7 +128,7 @@ class Plugin(object):
 	"""
 	ABOUT TO BE REWRITTEN
 	"""
-	def __init__(self, name, plugin_config=None):
+	def __init__(self, superbot):
 		'''
 		A plugin in initialized with:
 			- name (str)
@@ -148,10 +136,7 @@ class Plugin(object):
 				Values in config:
 				- DEBUG (bool) - this will be overridden if debug is set in config for this plugin
 		'''
-		raise DeprecationWarning
-		if plugin_config is None:
-			plugin_config = {}
-		self.name = name
+		self.sb = superbot
 		self.jobs = []
 		self.module = __import__(name)
 		self.module.config = plugin_config
