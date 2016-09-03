@@ -2,29 +2,30 @@
 # Ben Chapman-Kish
 
 import sys, os
+import logging
+import json
+
 import time
 import hashlib
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
-sys.path.append(this_dir)
-from basebot import BaseBot
-
-crontable = []
-outputs = []
-api_calls = []
 
 # To do: use im.list to determine if a message was in a DM
 
-class AnonBot(BaseBot):
-	def __init__(self, verbose=True):
+class AnonBot(object):
+	def __init__(self, superbot):
+		self.sb = superbot
+
+		# Add plugin-specific config support later
+		self.debug = self.sb.debug
+
 		self.send_commands = ('anon', 'anon-say', 'anon-send')
 		self.regen_commands = ('anon-regen', 'anon-reset', 'anon-clear')
-
-		BaseBot.__init__(self, self.send_commands + self.regen_commands, verbose)
+		self.commands = self.send_commands + self.regen_commands
 		
 		self.send_chat = '#anon-chat'
 		self.regen_time = 20*60 # 20 minutes
-		self.hash_cutoff = 10
+		self.hash_cutoff = 6
 
 		self.users = {}
 
@@ -32,6 +33,43 @@ class AnonBot(BaseBot):
 		return "AnonBot(send_commands={}, regen_commands={}, send_chat='{}', hash_cutoff={}, regen_time={}, self.users={}, verbose={})"\
 			.format(self.send_commands, self.regen_commands, self.send_chat, self.hash_cutoff, self.regen_time, self.users, self.verbose)
 	__str__ = __repr__
+
+	def debug(self, text=None, ansi_code=None, force=False):
+		if self.verbose or force:
+			if text:
+				if ansi_code:
+					print '\033['+str(ansi_code)+'m' + text + '\033[0m'
+				else:
+					print text
+			else:
+				print
+
+	def handleEvent(self, data):
+		if data["type"] == "message" and data.has_key('text'):
+			text = data['text']
+			
+			if text.startswith(self.usercode):
+				# @superbot
+				start=11 # even thouugh the len is 12
+			elif text.startswith('superbot'):
+				start=7
+			else: return
+
+			# Ignore first char after mention
+			text=text[start+2:]
+			if ' ' in text:
+				command = text[:text.index(' ')]
+				body = text[text.index(' ')+1:]
+				if command in self.commands:
+					self.debug("Command \033[36m{}\033[0m: \033[33m{}\033[0m".format(command, body))
+					self.do_command(data, command, body)
+					self.debug()
+			else:
+				command = text
+				if command in self.commands:
+					self.debug("Command \033[36m{}\033[0m".format(command))
+					self.do_command(data, command)
+					self.debug()
 
 	def do_command(self, data, command, body=None):
 		self.remove_expired_identifiers()
@@ -41,16 +79,16 @@ class AnonBot(BaseBot):
 
 			fallback = "{}: {}".format(identifier, body)
 
-			attachment = '''[
-				{
-					"fallback": "'''+fallback+'''",
-					"color": "#'''+identifier+'''",
-					"text": "'''+body+'''"
-				}
-			]'''
+			color = '#' + identifier[:6]
+
+			attachment = json.dumps([{
+				"fallback": fallback,
+				"color": color,
+				"text": body
+				}])
 
 			kwargs = {'channel': self.send_chat, 'username': 'anonymous', 'as_user': 'false', 'attachments': attachment}
-			api_calls.append(['chat.postMessage', kwargs])
+			self.sb.apiCall('chat.postMessage', kwargs)
 			
 			#output = "*{}:* {}".format(identifier, body)
 			#outputs.append([self.send_chat, output])
@@ -73,7 +111,7 @@ class AnonBot(BaseBot):
 		m.update(str(now))
 
 		# Get nice identifier that works as a hex color
-		identifier = m.hexdigest()[:6]
+		identifier = m.hexdigest()[:self.hash_cutoff]
 		self.users[userID] = (now, identifier)
 		return identifier
 
@@ -83,12 +121,4 @@ class AnonBot(BaseBot):
 		else:
 			return self.generate_identifier(userID)
 
-
-
-anonbot = AnonBot()
-
-def process_hello(data):
-	anonbot.process_hello(data)
-
-def process_message(data):
-	anonbot.process_message(data)
+Plugin = AnonBot

@@ -23,12 +23,15 @@ yet, until I can explain how.
 
 
 class SuperBot(object):
-	def __init__(self, config):
+	def __init__(self, config_file=None, credentials_file=None):
 		# set the config object
-		self.config = json.load(open('config.json'))
+		try:
+			self.config = json.load(open(config_file or 'config.json'))
+		except (IOError, ValueError):
+			self.config = {}
 
 		# set slack token
-		self.tokens = json.load(open('credentials.json'))
+		self.tokens = json.load(open(credentials_file or 'credentials.json'))
 		self.token = self.tokens.get('slack')
 
 		# set working directory for loading plugins or other files
@@ -47,12 +50,15 @@ class SuperBot(object):
 							level=logging.INFO,
 							format='%(asctime)s %(message)s')
 		logging.info('Initialized in: {}'.format(self.directory))
-		self.debug = self.config.get('debug', False)
+		self.debug = self.config.get('debug', True)
+		self.verbose = self.config.get('verbose', True)
+
+		self.username = self.config.get('username', 'superbot')
+		self.usercode = self.config.get('usercode', '<@U249VP6H2>')
 
 		# initialize stateful fields
 		self.last_ping = 0
-		self.plugin_names = []
-		self.plugin_instances = []
+		self.plugins = []
 		self.slack_client = None
 
 	def _dbg(self, debug_string):
@@ -66,7 +72,7 @@ class SuperBot(object):
 
 	def _start(self):
 		self.connect()
-		self.load_plugins()
+		self.loadPlugins()
 		while True:
 			for reply in self.slack_client.rtm_read():
 				self.eventHandlers(reply)
@@ -74,11 +80,10 @@ class SuperBot(object):
 			time.sleep(.1)
 
 	def start(self):
-		if 'DAEMON' in self.config:
-			if self.config.get('DAEMON'):
-				import daemon
-				with daemon.DaemonContext():
-					self._start()
+		if 'daemon' in self.config and self.config.get('daemon'):
+			import daemon
+			with daemon.DaemonContext():
+				self._start()
 		self._start()
 
 	def autoping(self):
@@ -88,10 +93,20 @@ class SuperBot(object):
 			self.slack_client.server.ping()
 			self.last_ping = now
 
+	def debug(self, text=None, ansi_code=None, force=False):
+		if self.verbose or force:
+			if text:
+				if ansi_code:
+					print '\033['+str(ansi_code)+'m' + text + '\033[0m'
+				else:
+					print text
+			else:
+				print
+
 	def eventHandlers(self, data):
 		if "type" in data:
 			self._dbg("got {}".format(data["type"]))
-			self.handle_event(data)
+			self.handleEvent(data)
 			for plugin in self.plugin_instances:
 				if self.debug:
 					plugin.handleEvent(data)
@@ -100,6 +115,10 @@ class SuperBot(object):
 						plugin.handleEvent(data)
 					except Exception:
 						logging.exception("problem in module {} {}".format(plugin, data))
+
+	def handleEvent(self, data):
+		if event["type"] == "hello":
+			self.debug(type(self).__name__ + " connected to Slack", 42)
 
 	def sendMessage(self, channel, message=None):
 		channel = self.slack_client.server.channels.find(channel)
@@ -110,11 +129,10 @@ class SuperBot(object):
 
 	def apiCall(self, method, kwargs={}):
 		if method is not None:
-			self.slack_client.server.api_call(method, **kwargs)
-			return True
-		return False
+			response = self.slack_client.server.api_call(method, **kwargs)
+			return json.loads(response)
 
-	def loadPluginInstances(self):
+	def loadPlugins(self):
 		self.plugin_instances = []
 		for name in self.plugin_names:
 			module = __import__(name)
@@ -136,7 +154,7 @@ class Plugin(object):
 	def __init__(self, superbot):
 		self.sb = superbot
 
-	def handleEvent(data):
+	def handleEvent(self, data):
 		raise NotImplementedError
 
 def main():
