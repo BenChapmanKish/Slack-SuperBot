@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-from __future__ import unicode_literals
 import sys
 import glob
 import os
@@ -7,6 +6,7 @@ import time
 import logging
 import argparse
 import json
+from importlib import import_module
 
 from slackclient import SlackClient
 
@@ -58,7 +58,7 @@ class SuperBot(object):
 
 		# initialize stateful fields
 		self.last_ping = 0
-		self.plugin_names = []
+		self.plugin_names = ['anon_chat']
 		self.plugin_instances = []
 		self.slack_client = None
 
@@ -73,7 +73,7 @@ class SuperBot(object):
 
 	def _start(self):
 		self.connect()
-		self.find_plugins()
+		#self.find_plugins()
 		self.load_plugins()
 		while True:
 			for reply in self.slack_client.rtm_read():
@@ -99,15 +99,30 @@ class SuperBot(object):
 		if self.verbose or force:
 			if text:
 				if ansi_code:
-					print '\033['+str(ansi_code)+'m' + text + '\033[0m'
+					print('\033['+str(ansi_code)+'m' + text + '\033[0m')
 				else:
-					print text
+					print(text)
 			else:
-				print
+				print()
+
+	def message_addressed(self, data):
+		if data["type"] == "message" and 'text' in data:
+			text = data['text']
+			
+			if text.startswith(self.usercode):
+				return True, 13
+			elif text.startswith(self.username):
+				return True, 9
+			elif data['channel'] in (im['id'] for im in self.api_call('im.list')['ims']):
+				return True, 0
+		
+		return False, 0
+
 
 	def event_handlers(self, data):
 		if "type" in data:
 			self._dbg("got {}".format(data["type"]))
+
 			self.handle_event(data)
 			for plugin in self.plugin_instances:
 				if self.debug:
@@ -119,10 +134,13 @@ class SuperBot(object):
 						logging.exception("problem in module {} {}".format(plugin, data))
 
 	def handle_event(self, data):
-		if data["type"] == "hello":
+		if data['type'] == 'hello':
 			self.log(type(self).__name__ + " connected to Slack", 42)
-		elif data["type"] == "message":
-			print data
+
+		addressed, start = self.message_addressed(data)
+		if addressed and data['text'][start:] in ('reload-plugins', 'plugin-reload', 'update', 'restart'):
+			self.log('Reloading plugins', 33)
+			self.load_plugins()
 
 	def send_message(self, channel, message=None):
 		channel = self.slack_client.server.channels.find(channel)
@@ -139,7 +157,7 @@ class SuperBot(object):
 	def load_plugins(self):
 		self.plugin_instances = []
 		for name in self.plugin_names:
-			module = __import__(name)
+			module = import_module('plugins.'+name)
 			if 'Plugin' in dir(module):
 				instance = module.Plugin(self)
 				self.plugin_instances.append(instance)

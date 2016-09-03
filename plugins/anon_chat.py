@@ -29,35 +29,20 @@ class AnonChat(object):
 		self.users = {}
 
 	def __repr__(self):
-		return "AnonChat(send_commands={}, regen_commands={}, send_chat='{}', hash_cutoff={}, regen_time={}, self.users={}, verbose={})"\
-			.format(self.send_commands, self.regen_commands, self.send_chat, self.hash_cutoff, self.regen_time, self.users, self.verbose)
+		return "AnonChat(send_commands={}, regen_commands={}, send_chat='{}', hash_cutoff={}, regen_time={}, self.users={})"\
+			.format(self.send_commands, self.regen_commands, self.send_chat, self.hash_cutoff, self.regen_time, self.users)
 	__str__ = __repr__
 
-	def debug(self, text=None, ansi_code=None, force=False):
-		if self.verbose or force:
-			if text:
-				if ansi_code:
-					print '\033['+str(ansi_code)+'m' + text + '\033[0m'
-				else:
-					print text
-			else:
-				print
-
 	def handle_event(self, data):
-		if data["type"] == "message" and data.has_key('text'):
-			text = data['text']
+		if data["type"] == "message" and 'text' in data:
+			print(self, data)
 			
-			if text.startswith(self.sb.usercode):
-				# @superbot
-				start=11 # even thouugh the len is 12
-			elif text.startswith(self.sb.username):
-				start=7
-			else:
-				im_channels = self.sb.api_call('im.list')
+			addressed, start = self.sb.message_addressed(data)
+			if not addressed:
 				return
 
-			# Ignore first char after mention
-			text=text[start+2:]
+			text = data['text'][start:]
+
 			if ' ' in text:
 				command = text[:text.index(' ')]
 				body = text[text.index(' ')+1:]
@@ -72,7 +57,7 @@ class AnonChat(object):
 			
 			self.remove_expired_identifiers()
 
-			if command in self.send_commands and isinstance(body, basestring):
+			if command in self.send_commands and isinstance(body, str):
 				identifier = self.get_unique_identifier(data['user'])
 
 				fallback = "{}: {}".format(identifier, body)
@@ -99,7 +84,7 @@ class AnonChat(object):
 			self.sb.log()
 
 	def remove_expired_identifiers(self):
-		for userID in self.users.iterkeys():
+		for userID in self.users.keys():
 			lastTime = self.users[userID][0]
 			if lastTime + self.regen_time < time.time():
 				self.users.pop(userID)
@@ -107,8 +92,8 @@ class AnonChat(object):
 	def generate_identifier(self, userID):
 		now = time.time()
 		m = hashlib.md5()
-		m.update(str(userID))
-		m.update(str(now))
+		m.update(userID.encode('utf-8'))
+		m.update(str(now).encode('utf-8'))
 
 		# Get nice identifier that works as a hex color
 		identifier = m.hexdigest()[:self.hash_cutoff]
@@ -116,7 +101,7 @@ class AnonChat(object):
 		return identifier
 
 	def get_unique_identifier(self, userID):
-		if self.users.has_key(userID):
+		if userID in self.users:
 			return self.users[userID][1]
 		else:
 			return self.generate_identifier(userID)
