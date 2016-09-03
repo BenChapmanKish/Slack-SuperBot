@@ -151,6 +151,11 @@ class SuperBot(object):
 			return True
 		return False
 
+	def get_username(self, user_id):
+		for member in self.api_call('users.list')['members']:
+			if member['id'] == user_id.upper():
+				return member['name']
+
 	def api_call(self, method, kwargs={}):
 		if method is not None:
 			response = self.slack_client.server.api_call(method, **kwargs)

@@ -28,6 +28,7 @@ class AnonChat(object):
 		self.commands = self.send_commands + self.regen_commands + self.identify_commands + self.help_commands
 		
 		self.anon_chat = '#anon-chat'
+		self.anon_chat_code = '<#'+self.sb.slack_client.server.channels.find(self.anon_chat).id+'>'
 		self.regen_time = 20*60 # 20 minutes
 		self.hash_cutoff = 6
 
@@ -57,9 +58,9 @@ class AnonChat(object):
 			if command not in self.commands:
 				return
 
-			self.sb.log("Command \033[36m{}\033[0m".format(command))
+			username = self.sb.get_username(data['user'])
+			self.sb.log("User \033[32m{}\033[0m issued command \033[35m{}\033[0m".format(username, command))
 			
-			self.remove_expired_identifiers()
 
 			if command in self.send_commands and isinstance(body, str):
 				color, name = self.get_unique_identifier(data['user'])
@@ -72,25 +73,20 @@ class AnonChat(object):
 
 				kwargs = {'channel': self.anon_chat, 'username': name, 'as_user': 'false', 'text': body}#, 'attachments': attachment}
 				self.sb.api_call('chat.postMessage', kwargs)
-				
-				#output = "*{}:* {}".format(identifier, body)
-				#outputs.append([self.send_chat, output])
-
-				self.sb.log("User \033[32m{}\033[0m: Color \033[35m{}\033[0m, Name \033[36m{}\033[0m".format(data['user'], color, name))
 
 			elif command in self.regen_commands:
 				color, name = self.generate_identifier(data['user'])
-				message = "Your new anonymous ID is " + name
+				message = "New anonymous ID for _" + username + "_ is *" + name + "*"
 				self.sb.send_message(data['channel'], message)
 
 			elif command in self.identify_commands:
 				color, name = self.get_unique_identifier(data['user'])
-				message = "Your current anonymous ID is " + name
+				message = "Current anonymous ID for _" + username + "_ is *" + name + "*"
 				self.sb.send_message(data['channel'], message)
 
 			elif command in self.help_commands:
 				message = "*SuperBot anonymous chat plugin*\nAvailable commands are:\n" + \
-'_' + self.send_commands[0] + ' [message]_: Anonymously send the message to ' + self.anon_chat + '\n' + \
+'_' + self.send_commands[0] + ' [message]_: Anonymously send the message to ' + self.anon_chat_code + '\n' + \
 '_' + self.regen_commands[0] + '_: Regenerate your anonymous unique identifier\n' + \
 '_' + self.identify_commands[0] + '_: Show your current anonymous unique identifier\n' + \
 '_' + self.help_commands[0] + '_: Display this help message'
@@ -121,6 +117,7 @@ class AnonChat(object):
 		return (color, name)
 
 	def get_unique_identifier(self, userID):
+		self.remove_expired_identifiers()
 		if userID in self.users:
 			return self.users[userID][1:]
 		else:
