@@ -45,7 +45,7 @@ class SuperBot(object):
 			self.directory = os.path.abspath(path)
 
 		# establish logging
-		log_file = config.get('logfile', 'superbot.log')
+		log_file = self.config.get('logfile', 'superbot.log')
 		logging.basicConfig(filename=log_file,
 							level=logging.INFO,
 							format='%(asctime)s %(message)s')
@@ -58,7 +58,8 @@ class SuperBot(object):
 
 		# initialize stateful fields
 		self.last_ping = 0
-		self.plugins = []
+		self.plugin_names = []
+		self.plugin_instances = []
 		self.slack_client = None
 
 	def _dbg(self, debug_string):
@@ -72,10 +73,11 @@ class SuperBot(object):
 
 	def _start(self):
 		self.connect()
-		self.loadPlugins()
+		self.find_plugins()
+		self.load_plugins()
 		while True:
 			for reply in self.slack_client.rtm_read():
-				self.eventHandlers(reply)
+				self.event_handlers(reply)
 			self.autoping()
 			time.sleep(.1)
 
@@ -93,7 +95,7 @@ class SuperBot(object):
 			self.slack_client.server.ping()
 			self.last_ping = now
 
-	def debug(self, text=None, ansi_code=None, force=False):
+	def log(self, text=None, ansi_code=None, force=False):
 		if self.verbose or force:
 			if text:
 				if ansi_code:
@@ -103,43 +105,46 @@ class SuperBot(object):
 			else:
 				print
 
-	def eventHandlers(self, data):
+	def event_handlers(self, data):
 		if "type" in data:
 			self._dbg("got {}".format(data["type"]))
-			self.handleEvent(data)
+			self.handle_event(data)
 			for plugin in self.plugin_instances:
 				if self.debug:
-					plugin.handleEvent(data)
+					plugin.handle_event(data)
 				else:
 					try:
-						plugin.handleEvent(data)
+						plugin.handle_event(data)
 					except Exception:
 						logging.exception("problem in module {} {}".format(plugin, data))
 
-	def handleEvent(self, data):
-		if event["type"] == "hello":
-			self.debug(type(self).__name__ + " connected to Slack", 42)
+	def handle_event(self, data):
+		if data["type"] == "hello":
+			self.log(type(self).__name__ + " connected to Slack", 42)
+		elif data["type"] == "message":
+			print data
 
-	def sendMessage(self, channel, message=None):
+	def send_message(self, channel, message=None):
 		channel = self.slack_client.server.channels.find(channel)
 		if channel is not None and message is not None:
 			channel.send_message(message)
 			return True
 		return False
 
-	def apiCall(self, method, kwargs={}):
+	def api_call(self, method, kwargs={}):
 		if method is not None:
 			response = self.slack_client.server.api_call(method, **kwargs)
 			return json.loads(response)
 
-	def loadPlugins(self):
+	def load_plugins(self):
 		self.plugin_instances = []
 		for name in self.plugin_names:
 			module = __import__(name)
-			instance = module.Plugin(self)
-			self.plugin_instances.append(instance)
+			if 'Plugin' in dir(module):
+				instance = module.Plugin(self)
+				self.plugin_instances.append(instance)
 
-	def findPlugins(self):
+	def find_plugins(self):
 		sys.path.insert(0, self.directory + '/plugins/')
 		for plugin in glob.glob(self.directory + '/plugins/*'):
 			sys.path.insert(1, plugin)
