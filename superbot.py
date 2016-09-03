@@ -118,7 +118,6 @@ class SuperBot(object):
 		
 		return False, 0
 
-
 	def event_handlers(self, data):
 		if "type" in data:
 			self._dbg("got {}".format(data["type"]))
@@ -136,10 +135,13 @@ class SuperBot(object):
 	def handle_event(self, data):
 		if data['type'] == 'hello':
 			self.log(type(self).__name__ + " connected to Slack", 42)
+			self.log()
 
 		addressed, start = self.message_addressed(data)
 		if addressed and data['text'][start:] in ('reload-plugins', 'plugin-reload', 'update', 'restart'):
 			self.log('Reloading plugins', 33)
+			message = "Reloading SuperBot plugins"
+			self.send_message(data['channel'], message)
 			self.load_plugins()
 
 	def send_message(self, channel, message=None):

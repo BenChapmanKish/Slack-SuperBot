@@ -9,6 +9,7 @@ This bot will connect to slack and have many different tasks it can perform.
 
 * [@slackhq: python-slackclient](https://github.com/slackhq/python-slackclient)
 * [@google: gdata-python-client](https://github.com/google/gdata-python-client)
+* [@treyhunner: names](https://github.com/treyhunner/names)
 
 ##Setup
 
