@@ -128,13 +128,13 @@ class AnonChat(object):
 		else:
 			return
 
-		self.users[userID] = (now, color, name)
+		self.users[userID] = (now, name)
 		return name
 
 	def get_unique_identifier(self, userID):
 		self.remove_expired_identifiers()
 		if userID in self.users:
-			return self.users[userID][1:]
+			return self.users[userID][1]
 		else:
 			return self.generate_identifier(userID)
 
