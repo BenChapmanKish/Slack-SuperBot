@@ -76,6 +76,8 @@ class SuperBot(object):
 			for reply in self.slack_client.rtm_read():
 				self.event_handlers(reply)
 			self.autoping()
+			if os.path.isfile('superbot.stop'):
+				sys.exit(0)
 			time.sleep(.1)
 
 	def start(self):

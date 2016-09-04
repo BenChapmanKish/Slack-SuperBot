@@ -19,29 +19,24 @@ killbot() {
 	fi
 }
 
-runbot() {
-	python3 superbot.py --daemon
-	if [[ "$?" -eq 0 ]]; then
-		printf "\033[32mSuperbot succesfully loaded\033[0m\n"
-	else
-		printf "\033[31mSuperbot failed to load\033[0m\n"
-	fi
-}
 
 killbot
 git pull origin master
-runbot
+python3 superbot.py &
 
 while true; do
 	git fetch origin
 	NUM_DIFF=$(git rev-list HEAD...origin/master --count)
 	if [[ ! "$NUM_DIFF" -eq 0 ]]; then
 		printf "\033[35mChanged detected at $(date +'%y/%m/%d %T')\033[0m\n"
+		touch superbot.stop
 		killbot
 
 		git merge origin/master
+		sleep 1
 		printf "\033[33mReloading superbot\033[0m\n"
-		runbot
+		rm superbot.stop
+		python3 superbot.py &
 	fi
 	sleep 10
 done
