@@ -36,7 +36,7 @@ class AnonChat(object):
 		self.help_message = "*SuperBot anonymous chat plugin*\nAvailable commands are:\n" + \
 			'_' + self.send_commands[0] + ' message_: Anonymously send the message to ' + self.anon_chat_code + '\n' + \
 			'_' + self.regen_commands[0] + ' [' + '/'.join(self.name_types) + ']_: ' + \
-				'Regenerate your anonymous unique identifier (with optional gender/type)\n' + \
+				'Regenerate your anonymous unique identifier (with optional gender/type, default ' + self.name_types[0] + ')\n' + \
 			'_' + self.identify_commands[0] + '_: Show your current anonymous unique identifier\n' + \
 			'_' + self.help_commands[0] + '_: Display this help message'
 
