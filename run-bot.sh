@@ -7,9 +7,16 @@
 # local, loaded keychain (e.g. with ssh-add)
 
 killbot() {
-	for file in /tmp/superbot*.pid; do
-		kill $(cat $file)
-	done
+	shopt -s nullglob
+	set -- /tmp/superbot*.pid
+	if [ "$#" -gt 0 ]; then
+		for file in "$@"; do
+			kill $(cat $file)
+			if [[ -w $file ]]; then
+				rm $file
+			fi
+		done
+	fi
 }
 
 killbot
