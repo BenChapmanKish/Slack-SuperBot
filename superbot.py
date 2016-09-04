@@ -82,8 +82,6 @@ class SuperBot(object):
 		if 'daemon' in self.config and self.config.get('daemon'):
 			import daemonize
 			pid_file = self.get_pid_file()
-			with open('superbot_pid_file.txt', 'w') as f:
-				f.write(pid_file)
 			daemon = daemonize.Daemonize(app='Slack-SuperBot', pid=pid_file, action=self._start)
 			daemon.start()
 		else:

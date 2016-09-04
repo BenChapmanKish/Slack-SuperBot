@@ -1,1 +1,1 @@
-/tmp/superbot5.pid
+/tmp/superbot2.pid
