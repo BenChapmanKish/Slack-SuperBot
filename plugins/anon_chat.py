@@ -23,6 +23,7 @@ class AnonChat(object):
 
 		self.send_commands = ('anon', 'anon-say', 'anon-send')
 		self.regen_commands = ('anon-regen', 'anon-reset', 'anon-clear')
+		self.name_types = ('first', 'male', 'female', 'last')
 		self.identify_commands = ('anon-id', 'anon-identify', 'anon-whoami')
 		self.help_commands = ('anon-help', 'anon-commands')
 		self.commands = self.send_commands + self.regen_commands + self.identify_commands + self.help_commands
@@ -31,6 +32,13 @@ class AnonChat(object):
 		self.anon_chat_code = '<#'+self.sb.slack_client.server.channels.find(self.anon_chat).id+'>'
 		self.regen_time = 20*60 # 20 minutes
 		self.hash_cutoff = 6
+
+		self.help_message = "*SuperBot anonymous chat plugin*\nAvailable commands are:\n" + \
+			'_' + self.send_commands[0] + ' message_: Anonymously send the message to ' + self.anon_chat_code + '\n' + \
+			'_' + self.regen_commands[0] + ' [' + '/'.join(self.name_types) + ']_: ' + \
+				'Regenerate your anonymous unique identifier (with optional gender/type)\n' + \
+			'_' + self.identify_commands[0] + '_: Show your current anonymous unique identifier\n' + \
+			'_' + self.help_commands[0] + '_: Display this help message'
 
 		self.users = {}
 
@@ -63,7 +71,7 @@ class AnonChat(object):
 			
 
 			if command in self.send_commands and isinstance(body, str):
-				color, name = self.get_unique_identifier(data['user'])
+				name = self.get_unique_identifier(data['user'])
 
 				#attachment = json.dumps([{
 				#	"fallback": body,
@@ -75,22 +83,21 @@ class AnonChat(object):
 				self.sb.api_call('chat.postMessage', kwargs)
 
 			elif command in self.regen_commands:
-				color, name = self.generate_identifier(data['user'])
-				message = "New anonymous ID for <@" + data['user'] + "> is *" + name + "*"
-				self.sb.send_message(data['channel'], message)
+				name = self.generate_identifier(data['user'], body)
+				if name:
+					message = "New anonymous ID for <@" + data['user'] + "> is *" + name + "*"
+					self.sb.send_message(data['channel'], message)
+				else:
+					self.sb.send_message(data['channel'], 'Invalid name type, command failed.')
+					self.sb.send_message(data['channel'], self.help_message)
 
 			elif command in self.identify_commands:
-				color, name = self.get_unique_identifier(data['user'])
+				name = self.get_unique_identifier(data['user'])
 				message = "Current anonymous ID for <@" + data['user'] + "> is *" + name + "*"
 				self.sb.send_message(data['channel'], message)
 
 			elif command in self.help_commands:
-				message = "*SuperBot anonymous chat plugin*\nAvailable commands are:\n" + \
-'_' + self.send_commands[0] + ' [message]_: Anonymously send the message to ' + self.anon_chat_code + '\n' + \
-'_' + self.regen_commands[0] + '_: Regenerate your anonymous unique identifier\n' + \
-'_' + self.identify_commands[0] + '_: Show your current anonymous unique identifier\n' + \
-'_' + self.help_commands[0] + '_: Display this help message'
-				self.sb.send_message(data['channel'], message)
+				self.sb.send_message(data['channel'], self.help_message)
 
 			self.sb.log()
 
@@ -100,21 +107,29 @@ class AnonChat(object):
 			if lastTime + self.regen_time < time.time():
 				self.users.pop(userID)
 
-	def generate_identifier(self, userID):
+	def generate_identifier(self, userID, name_type=None):
 		now = time.time()
 		m = hashlib.md5()
 		m.update(userID.encode('utf-8'))
 		m.update(str(now).encode('utf-8'))
 
 		# Get nice identifier that works as a hex color
-		color = m.hexdigest()[:6]
+		#color = m.hexdigest()[:6]
 
 		# Get a random name too just cause
 		random.seed(m.digest())
-		name = names.get_first_name()
+		
+		if name_type in ('male', 'female'):
+			name = names.get_first_name(gender=name_type)
+		elif name_type=='last':
+			name = names.get_last_name()
+		elif name_type in ('first', None):
+			name = names.get_first_name()
+		else:
+			return
 
 		self.users[userID] = (now, color, name)
-		return (color, name)
+		return name
 
 	def get_unique_identifier(self, userID):
 		self.remove_expired_identifiers()
