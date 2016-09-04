@@ -76,12 +76,12 @@ class AnonChat(object):
 
 			elif command in self.regen_commands:
 				color, name = self.generate_identifier(data['user'])
-				message = "New anonymous ID for " + data['user'] + " is *" + name + "*"
+				message = "New anonymous ID for <@" + data['user'] + "> is *" + name + "*"
 				self.sb.send_message(data['channel'], message)
 
 			elif command in self.identify_commands:
 				color, name = self.get_unique_identifier(data['user'])
-				message = "Current anonymous ID for " + data['user'] + " is *" + name + "*"
+				message = "Current anonymous ID for <@" + data['user'] + "> is *" + name + "*"
 				self.sb.send_message(data['channel'], message)
 
 			elif command in self.help_commands:
