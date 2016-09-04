@@ -51,9 +51,11 @@
 .DS_Store
 
 ## User additions
-
 /*.conf
 /*.json
 /*.yml
 *.log
+
+/credentials.json
+/config.json
 /superbot_pid_file.txt
