@@ -57,10 +57,10 @@ class AnonChat(object):
 			text = data['text'][start:]
 
 			if ' ' in text:
-				command = text[:text.index(' ')]
+				command = text[:text.index(' ')].lower()
 				body = text[text.index(' ')+1:]
 			else:
-				command = text
+				command = text.lower()
 				body = None
 
 			if command not in self.commands:
@@ -83,7 +83,7 @@ class AnonChat(object):
 				self.sb.api_call('chat.postMessage', kwargs)
 
 			elif command in self.regen_commands:
-				name = self.generate_identifier(data['user'], body)
+				name = self.generate_identifier(data['user'], body.lower())
 				if name:
 					message = "New anonymous ID for <@" + data['user'] + "> is *" + name + "*"
 					self.sb.send_message(data['channel'], message)
@@ -121,7 +121,7 @@ class AnonChat(object):
 		
 		if name_type in ('male', 'female'):
 			name = names.get_first_name(gender=name_type)
-		elif name_type=='last':
+		elif name_type == 'last':
 			name = names.get_last_name()
 		elif name_type in ('first', None):
 			name = names.get_first_name()
