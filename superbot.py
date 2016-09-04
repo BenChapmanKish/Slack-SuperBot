@@ -23,15 +23,12 @@ yet, until I can explain how.
 
 
 class SuperBot(object):
-	def __init__(self, config_file=None, credentials_file=None):
+	def __init__(self, credentials, config={}):
 		# set the config object
-		try:
-			self.config = json.load(open(config_file or 'config.json'))
-		except (IOError, ValueError):
-			self.config = {}
+		self.config = config
 
 		# set slack token
-		self.tokens = json.load(open(credentials_file or 'credentials.json'))
+		self.tokens = credentials
 		self.token = self.tokens.get('slack')
 
 		# set working directory for loading plugins or other files
@@ -83,10 +80,20 @@ class SuperBot(object):
 
 	def start(self):
 		if 'daemon' in self.config and self.config.get('daemon'):
-			import daemon
-			with daemon.DaemonContext():
-				self._start()
-		self._start()
+			import daemonize
+			pid_file = self.get_pid_file()
+			with open('superbot_pid_file.txt', 'w') as f:
+				f.write(pid_file)
+			daemon = daemonize.Daemonize(app='Slack-SuperBot', pid=pid_file, action=self._start)
+			daemon.start()
+		else:
+			self._start()
+	
+	def get_pid_file(self):
+		i=0
+		while os.path.isfile('/tmp/superbot'+str(i)+'.pid'):
+			i+=1
+		return '/tmp/superbot'+str(i)+'.pid'
 
 	def autoping(self):
 		# hardcode the interval to 3 seconds
@@ -187,8 +194,32 @@ class Plugin(object):
 	def handleEvent(self, data):
 		raise NotImplementedError
 
+def get_config():
+	# Improve this later
+	config = {}
+
+	parser = argparse.ArgumentParser()
+	#parser.add_argument('--debug', help='Break on plugin errors', action='store_true')
+	parser.add_argument('--daemon', help='Run as a daemon', action='store_true')
+	parser.add_argument('--credentials', help='Specify the credentials file', type=str)
+	parser.add_argument('--config', help='Specify a config file', type=str)
+	parsed = parser.parse_args()
+
+	config['daemon'] = parsed.daemon
+	config['credentials'] = parsed.credentials
+	
+	try:
+		config.update(json.load(open(parsed.config or 'config.json')))
+	except (IOError, ValueError):
+		pass
+	
+	return config
+	
+
 def main():
-	bot = SuperBot()
+	config = get_config()
+	credentials = json.load(open(config['credentials'] or 'credentials.json'))
+	bot = SuperBot(credentials, config)
 	try:
 		bot.start()
 	except KeyboardInterrupt:
