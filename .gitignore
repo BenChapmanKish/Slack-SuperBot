@@ -57,3 +57,4 @@
 /*.yml
 !/config.json
 *.log
+/superbot_pid_file.txt
