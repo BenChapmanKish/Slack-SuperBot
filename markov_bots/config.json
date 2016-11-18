@@ -1,0 +1,9 @@
+{
+	"debug": true,
+	"credentials": "../credentials.json",
+	"name": "MarkovBot",
+	"training_channel": "random",
+	"ignored_users": ["U249VP6H2"],
+	"rand_post_chance": 1,
+	"min_wait": 5
+}

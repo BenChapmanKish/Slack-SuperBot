@@ -163,6 +163,11 @@ class SuperBot(object):
 			if member['id'] == user_id.upper():
 				return member['name']
 
+	def get_channel(self, channel_id):
+		for channel in self.api_call('channels.list')['channels']:
+			if channel['id'] == channel_id.upper():
+				return channel['name']
+
 	def api_call(self, method, kwargs={}):
 		if method is not None:
 			response = self.slack_client.server.api_call(method, **kwargs)
@@ -177,11 +182,11 @@ class SuperBot(object):
 				self.plugin_instances.append(instance)
 
 	def find_plugins(self):
-		sys.path.insert(0, self.directory + '/plugins/')
-		for plugin in glob.glob(self.directory + '/plugins/*'):
+		sys.path.insert(0, self.directory + '/markov/')
+		for plugin in glob.glob(self.directory + '/markov/*'):
 			sys.path.insert(1, plugin)
 
-		for plugin in glob.glob(self.directory + '/plugins/*.py'):
+		for plugin in glob.glob(self.directory + '/markov/*.py'):
 			logging.info(plugin)
 			name = plugin.split('/')[-1][:-3]
 			self.plugin_names.append(name)
