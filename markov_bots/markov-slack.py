@@ -37,52 +37,52 @@ class TextModel(markovify.Text):
 
 class MarkovBot(object):
 	# This was going to be fully abstract, but then I decided it wasn't worth it
-	def __init__(self, handler):
+	def __init__(self, handler, directory, config={}):
 		self.handler = handler
-		self.directory = self.handler.directory
+		self.directory = directory
+		self.config = config
+		if not config and os.path.isfile(os.path.join(directory, 'config.json')):
+			self.config.update(json.load(open(os.path.join(directory, 'config.json'))))
+
 		self.send_message = self.handler.send_message
 		self.api_call = self.handler.api_call
-
-		self.config = self.get_config()
 
 		self.name = self.config.get("name", "Unnamed Markov Bot")
 		self.icon = self.config.get("icon", None)
 
 		#self.ignore_self = self.config.get("ignore_self", True)
-		self.allowed_channels = self.ignored_users = None
+		self.allowed_channels = self.ignored_users = []
 		if "ignored_users" in self.config:
 			self.ignored_users = map(str.lower, self.config["ignored_users"])
 		if "allowed_channels" in self.config:
 			self.allowed_channels = map(str.lower, self.config["allowed_channels"])
 
 		self.rand_post_chance = self.config.get("rand_post_chance", 0)
-		self.min_wait = self.config.get("min_wait", None)
+		self.min_wait = self.config.get("min_wait", 0)
 		self.last_post = 0
 
 		self.default_channel = self.config.get("default_channel", "random")
 		self.state_size = self.config.get("state_size", 2)
 
 		self.avg_comment_len = 1
-		self.model = None
+		self.training_messages = []
 
-		if "training_channel" in self.config:
-			self.train_from_channel(self.config["training_channel"])
-		elif "training_file" in self.config:
-			self.train_from_file(self.config["training_file"])
-		else:
+		if "training_channels" in self.config:
+			for channel in self.config["training_channels"]:
+				self.train_from_channel(channel)
+		if "training_files" in self.config:
+			for filename in self.config["training_files"]:
+				self.train_from_file(filename)
+		
+		if len(self.training_messages) == 0:
 			print("Nothing to train from!")
 			sys.exit(1)
 
-	def get_config(self):
-		if os.path.isfile(os.path.join(self.directory, 'config.json')):
-			return json.load(open(os.path.join(self.directory, 'config.json')))
-		else:
-			print("Warning: No config file found for " + type(self).__name__)
-		return {}
+		self.model = self.make_model()
 
 	def __repr__(self):
-		return "{}(username={}, icon={})"\
-			.format(type(self).__name__, self.name, self.icon)
+		return "{}(name={})"\
+			.format(type(self).__name__, self.name)
 	__str__ = __repr__
 
 	def post_message(self, channel, message):
@@ -95,16 +95,17 @@ class MarkovBot(object):
 
 	def handle_event(self, data):
 		if data['type'] == 'message' and 'text' in data:
-			print("Received event:")
-			print(data)
-			print()
-			user = data['username']
+			print("\033[43mReceived event:\033[0m")
+			print(data, '\n')
+
+			if 'user' in data:
+				user = self.handler.get_username(data['user'])
+			elif 'username' in data:
+				user = data['username']
 			channel = data['channel']
 
-			if user.lower() not in self.ignored_users and \
-			self.handler.get_username(user).lower() not in self.ignored_users and \
-			(channel.lower() in self.allowed_channels or \
-			self.handler.get_channel(channel).lower() in self.allowed_channels):
+			if user.lower() not in list(self.ignored_users) and \
+			(self.allowed_channels and self.handler.get_channel(channel).lower() in self.allowed_channels):
 
 				if random.random() < self.rand_post_chance:
 					if self.min_wait:
@@ -123,42 +124,49 @@ class MarkovBot(object):
 				self.last_post = now
 			self.create_message(self.default_channel)
 
+	def make_model(self):
+		print(str(self) + ": Creating model...")
+		random.shuffle(self.training_messages)
+		self.avg_comment_len = sum(map(len, self.training_messages)) / float(len(self.training_messages))
+		return TextModel("\n".join(self.training_messages), state_size=self.state_size)
+
 	def train_from_channel(self, channel):
-		messages = []
 		latest = time.time()
+		if type(channel) == str and len(channel) > 0:
+			if channel[0] == '#':
+				channel = self.handler.get_channel_id(channel[1:])
+			elif channel[0] == '@':
+				channel = self.handler.get_user_id(channel[1:])
+
 		for i in range(10): # train with 1000 messages
-			response = self.api_call('channels.history', {"channel": self.handler.get_channel_id(channel), "count": 100, "latest": latest})
+			response = self.api_call('channels.history', {"channel": channel, "count": 100, "latest": latest})
 			if not response['ok']:
 				print(response)
 				sys.exit(1)
 			for m in response['messages']:
 				if m['type'] == 'message' and 'text' in m:
-					messages.append(m['text'])
+					self.training_messages.append(m['text'])
 			if not response['has_more']:
 				break
 			latest = response['messages'][-1]['ts']
 
-		random.shuffle(messages)
-
-		self.avg_comment_len = sum(map(len, messages)) / float(len(messages))
-		self.model = TextModel("\n".join(messages), state_size=self.state_size)
-
 	def train_from_file(self, filename):
-		with open(filename) as f:
+		with open(os.path.join(self.directory, filename)) as f:
 			lines = f.readlines()
 		messages = []
 		for l in lines:
 			if l.strip():
-				messages.append(l)
-
-		random.shuffle(messages)
-
-		self.avg_comment_len = sum(map(len, messages)) / float(len(messages))
-		self.model = TextModel("\n".join(messages), state_size=self.state_size)
+				self.training_messages.append(l)
 
 	def create_message(self, channel):
 		if not self.model:
 			return
+
+		if type(channel) == str and len(channel) > 0:
+			if channel[0] == '#':
+				channel = self.handler.get_channel_id(channel[1:])
+			elif channel[0] == '@':
+				channel = self.handler.get_user_id(channel[1:])
 
 		# stolen from subreddit simulator:
 		message = ""
@@ -178,10 +186,10 @@ class MarkovBot(object):
 
 		message = message.strip()
 
-		print("Generated message to send to #" + channel + ":")
+		print("\033[42mGenerated message to send to " + channel + ":\033[0m")
 		print(message)
 		
-		response = self.post_message(self.handler.get_channel_id(channel), message)
+		response = self.post_message(channel, message)
 		print(response)
 		print()
 
@@ -207,6 +215,8 @@ class MarkovBotHandler(object):
 
 		self.last_ping = 0
 		self.slack_client = None
+
+		self.bots = []
 
 
 	def connect(self):
@@ -239,7 +249,6 @@ class MarkovBotHandler(object):
 
 	def get_channel(self, channel_id):
 		for channel in self.api_call('channels.list')['channels']:
-			print("get_channel", channel_id, channel['id'])
 			if channel['id'] == channel_id.upper():
 				return channel['name']
 
@@ -249,16 +258,35 @@ class MarkovBotHandler(object):
 				return channel['id']
 
 
+	def find_bots(self):
+		for item in os.listdir(self.directory):
+			if os.path.isdir(item):
+				if 'specified_bots' in self.config:
+					if item not in self.config['specified_bots']:
+						continue
+
+				bot_dir = os.path.join(self.directory, item)
+				config = {}
+				if os.path.isfile(os.path.join(bot_dir, 'config.json')):
+					config = json.load(open(os.path.join(bot_dir, 'config.json')))
+					if config.get('ignore', False) and 'specified_bots' not in self.config:
+						continue
+
+				self.bots.append(MarkovBot(self, bot_dir, config))
+
+
 	def start(self):
-		print("Connecting...")
+		print("Connecting to Slack...")
 		self.connect()
-		# The creation of the bot instance
-		self.bot = MarkovBot(self)
+		self.find_bots()
+		print("Successfully initialized", len(self.bots), "bots")
 		while True:
 			for reply in self.slack_client.rtm_read():
-				self.bot.handle_event(reply)
+				for bot in self.bots:
+					bot.handle_event(reply)
 			self.autoping()
-			self.bot.time_action()
+			for bot in self.bots:
+				bot.time_action()
 			time.sleep(.1)
 
 	def autoping(self):
@@ -270,15 +298,17 @@ class MarkovBotHandler(object):
 
 
 def get_config():
-	if os.path.isfile('config.json'):
-		config = json.load(open('config.json'))
+	config = {}
 
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--credentials', help='Credentials', type=str)
-	parser.add_argument('--base_path', help='Base path for markov bots', type=str)
-	parser.add_argument('--debug', help='Stop when a bot has an exception', action='store_true')
-	parser.add_argument('--base_dir', help='Stop when a bot has an exception', default=this_dir, type=str)
+	parser.add_argument('--config', help='Config', default='config.json', type=str)
+	parser.add_argument('--base_path', help='Base path for markov bots', default=this_dir, type=str)
+	parser.add_argument('-b', '--specify-bot', dest='specified_bots', help='Specify a bot to run, ignoring other bots', action='append', type=str)
 	parsed = parser.parse_args()
+
+	if os.path.isfile(parsed.config):
+		config = json.load(open(parsed.config))
 
 	for arg, val in vars(parsed).items():
 		if val:
@@ -294,7 +324,7 @@ def main():
 	try:
 		bot.start()
 	except KeyboardInterrupt:
-		print("Stopped bot instance")
+		print("\nStopped bot instance")
 
 if __name__ == '__main__':
 	main()

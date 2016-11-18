@@ -1,0 +1,8 @@
+{
+	"name": "MyImmortalBot",
+	"icon": "http://vignette3.wikia.nocookie.net/myimmortal/images/0/06/180px-Dumbledoreinmyimmortal.jpg/revision/latest?cb=20100926022315",
+	"default_channel": "#bot-fun",
+	"training_files": ["my-immortal.txt"],
+	"rand_post_chance": 1,
+	"min_wait": 5
+}

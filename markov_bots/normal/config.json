@@ -1,0 +1,9 @@
+{
+	"ignore": true,
+	"name": "MarkovBot",
+	"default_channel": "#bot-fun",
+	"training_channels": ["#general", "#random", "#markov-source", "#bot-fun"],
+	"ignored_users": ["U249VP6H2"],
+	"rand_post_chance": 1,
+	"min_wait": 5
+}
