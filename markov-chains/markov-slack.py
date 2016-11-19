@@ -48,19 +48,19 @@ class MarkovBot(object):
 		self.name = self.config.get("name", "Unnamed Markov Bot")
 		self.icon = self.config.get("icon", None)
 
-		#self.ignore_self = self.config.get("ignore_self", True)
+		self.ignore_self = self.config.get("ignore_self", True)
 		self.allowed_channels = self.ignored_users = []
 		if "ignored_users" in self.config:
 			self.ignored_users = map(str.lower, self.config["ignored_users"])
 		if "allowed_channels" in self.config:
 			self.allowed_channels = map(str.lower, self.config["allowed_channels"])
 
-		self.train_message_limit = self.config.get("train_message_limit", 10) # hundreds of messages to train with
+		self.slack_message_limit = self.config.get("slack_message_limit", 10) # hundreds of messages to train with
 		self.rand_post_chance = self.config.get("rand_post_chance", 0)
 		self.min_wait = self.config.get("min_wait", 0)
 		self.last_post = 0
 
-		self.default_channel = self.config.get("default_channel", "random")
+		self.default_channel = self.config.get("default_channel", "#random")
 		self.state_size = self.config.get("state_size", 2)
 		self.retrain_interval = self.config.get("retrain_interval", None)
 
@@ -108,6 +108,9 @@ class MarkovBot(object):
 				user = data['username']
 			channel = data['channel']
 
+			if self.ignore_self and user.lower() == self.name:
+				continue
+
 			if user.lower() not in list(self.ignored_users) and \
 			(self.allowed_channels and self.handler.get_channel(channel).lower() in self.allowed_channels):
 
@@ -154,7 +157,7 @@ class MarkovBot(object):
 				self.train_from_wikipedia(title=page)
 		if "train_wiki_random" in self.config:
 			print("Training from", self.config["train_wiki_random"], "random wikipedia articles:")
-			self.train_from_wikipedia(random=self.config["train_wiki_random"], pool=True)
+			self.train_from_wikipedia(random=self.config["train_wiki_random"])
 
 		if "train_subreddits" in self.config:
 			print("Training from subreddits:", self.config["train_subreddits"])
@@ -185,7 +188,7 @@ class MarkovBot(object):
 			elif channel[0] == '@':
 				channel = self.handler.get_user_id(channel[1:])
 
-		for i in range(max(1, self.train_message_limit)):
+		for i in range(max(1, self.slack_message_limit)):
 			response = self.api_call('channels.history', {"channel": channel, "count": 100, "latest": latest})
 			if not response['ok']:
 				print(response)

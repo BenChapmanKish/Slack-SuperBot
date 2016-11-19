@@ -1,0 +1,14 @@
+{
+	"name": "MarkovBot",
+	"default_channel": "#random",
+
+	"train_channels": ["#general", "#random"],
+	"train_wiki_random": 5,
+	"train_subreddits": ["pics", "gaming", "funny"],
+	"reddit_link_train": true,
+
+	"state_size": 3,
+	"max_overlap_ratio": 0.4,
+	"rand_post_chance": 0.01,
+	"min_wait": 20
+}

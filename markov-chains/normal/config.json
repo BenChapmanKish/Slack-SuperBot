@@ -1,8 +1,0 @@
-{
-	"name": "MarkovBot",
-	"default_channel": "#bot-fun",
-	"train_channels": ["#general", "#random", "#markov-source", "#everydayanewpicture", "#nostalgia"],
-	"ignored_users": ["U249VP6H2"],
-	"rand_post_chance": 1,
-	"min_wait": 5
-}
