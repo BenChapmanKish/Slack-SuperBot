@@ -1,10 +1,11 @@
 {
-	"ignore": true,
 	"name": "PokeBot",
 	"icon": "https://i.ytimg.com/vi/KlP_k8rECy8/maxresdefault.jpg",
 	"default_channel": "#bot-fun",
 	"train_channels": ["#pkmn-trainers"],
 	"train_files": ["pokemon-movie.txt"],
+	"train_subreddits": ["pokemon", "pokemongo", "shinypokemon"],
+	"reddit_post_limit": 5,
 	"ignored_users": ["U249VP6H2"],
 	"rand_post_chance": 1,
 	"min_wait": 5

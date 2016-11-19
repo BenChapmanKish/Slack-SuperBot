@@ -1,5 +1,4 @@
 {
-	"ignore": true,
 	"name": "MarkovBot",
 	"default_channel": "#bot-fun",
 	"train_channels": ["#general", "#random", "#markov-source", "#everydayanewpicture", "#nostalgia"],

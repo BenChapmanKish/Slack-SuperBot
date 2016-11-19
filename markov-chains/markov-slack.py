@@ -8,6 +8,8 @@ import json
 import time
 import random
 import markovify
+import re
+from pprint import pprint
 from slackclient import SlackClient
 sys.dont_write_bytecode = True
 
@@ -53,6 +55,7 @@ class MarkovBot(object):
 		if "allowed_channels" in self.config:
 			self.allowed_channels = map(str.lower, self.config["allowed_channels"])
 
+		self.train_message_limit = self.config.get("train_message_limit", 10) # hundreds of messages to train with
 		self.rand_post_chance = self.config.get("rand_post_chance", 0)
 		self.min_wait = self.config.get("min_wait", 0)
 		self.last_post = 0
@@ -64,6 +67,14 @@ class MarkovBot(object):
 		self.max_tries = self.config.get("max_tries", 10000)
 		self.max_overlap_total = self.config.get("max_overlap_total", 10)
 		self.max_overlap_ratio = self.config.get("max_overlap_ratio", 0.5)
+
+		self.reddit_post_limit = self.config.get("reddit_post_limit", 100)
+		self.reddit_ignore_mod = self.config.get("reddit_ignore_mod", True)
+		self.reddit_title_train = self.config.get("reddit_title_train", True)
+		self.reddit_self_train = self.config.get("reddit_self_train", True)
+		self.reddit_link_train = self.config.get("reddit_link_train", False)
+		self.reddit_comment_train = self.config.get("reddit_comment_train", True)
+		self.reddit_session = None
 
 		self.avg_comment_len = 1
 		self.training_messages = []
@@ -122,22 +133,38 @@ class MarkovBot(object):
 
 	def prepare_training(self):
 		if "train_channels" in self.config:
-			for channel in self.config["train_channels"]:
-				self.train_from_channel(channel)
+			print("Training from channels:", self.config["train_channels"])
+			if self.config["train_channels"] == "all":
+				channels = self.api_call('channels.list')['channels']
+				for channel in channels:
+					self.train_from_channel(channel['id'])
+
+			else:
+				for channel in self.config["train_channels"]:
+					self.train_from_channel(channel)
 
 		if "train_files" in self.config:
+			print("Training from files:", self.config["train_files"])
 			for filename in self.config["train_files"]:
 				self.train_from_file(filename)
 
 		if "train_wiki_pages" in self.config:
+			print("Training from wikipedia articles:", self.config["train_wiki_pages"])
 			for page in self.config["train_wiki_pages"]:
 				self.train_from_wikipedia(title=page)
 		if "train_wiki_random" in self.config:
+			print("Training from", self.config["train_wiki_random"], "random wikipedia articles:")
 			self.train_from_wikipedia(random=self.config["train_wiki_random"], pool=True)
 
 		if "train_subreddits" in self.config:
+			print("Training from subreddits:", self.config["train_subreddits"])
 			for sub in self.config["train_subreddits"]:
 				self.train_from_reddit(sub)
+
+		if "train_random_subs" in self.config:
+			print("Training from", int(self.config["train_random_subs"]), "random subreddits")
+			for x in range(self.config["train_random_subs"]):
+				self.train_from_reddit()
 
 
 
@@ -158,7 +185,7 @@ class MarkovBot(object):
 			elif channel[0] == '@':
 				channel = self.handler.get_user_id(channel[1:])
 
-		for i in range(10): # train with 1000 messages
+		for i in range(max(1, self.train_message_limit)):
 			response = self.api_call('channels.history', {"channel": channel, "count": 100, "latest": latest})
 			if not response['ok']:
 				print(response)
@@ -174,12 +201,47 @@ class MarkovBot(object):
 		with open(os.path.join(self.directory, filename)) as f:
 			lines = f.readlines()
 		messages = []
-		for l in lines:
-			if l.strip():
+		for line in lines:
+			l = line.strip()
+			if l:
 				self.training_messages.append(l)
 
-	def train_from_reddit(self, subreddit):
-		raise NotImplemented
+	def train_from_reddit(self, subreddit_name=None):
+		if not self.reddit_session:
+			import praw
+			self.reddit_session = praw.Reddit(user_agent="Slack-SuperBot", \
+				client_id=self.handler.tokens['reddit_id'], client_secret=self.handler.tokens['reddit_secret'])
+
+		if subreddit_name:
+			subreddit = self.reddit_session.subreddit(subreddit_name)
+		else:
+			subreddit = self.reddit_session.random_subreddit()
+		
+		submissions = subreddit.hot(limit=self.reddit_post_limit)
+
+		for sub in submissions:
+			if (sub.stickied or sub.distinguished) and self.reddit_ignore_mod:
+				continue
+			author = (sub.author.name if sub.author else '[deleted]')
+			print("\033[35mSubmission by " + author + ":\033[0m " + sub.title)
+			if self.reddit_title_train:
+				self.training_messages.append(sub.title)
+			if sub.is_self and self.reddit_self_train:
+				for line in sub.selftext.splitlines():
+					l = line.strip()
+					if l:
+						self.training_messages.append(l)
+			elif self.reddit_link_train:
+				self.training_messages.append(sub.url)
+
+			if self.reddit_comment_train:
+				sub.comments.replace_more()
+				comments = sub.comments.list()
+				for comment in comments:
+					for line in comment.body.splitlines():
+						l = line.strip()
+						if l:
+							self.training_messages.append(l)
 
 	def train_from_wikipedia(self, title=None, random=1, pool=False):
 		import wikipedia
@@ -202,6 +264,7 @@ class MarkovBot(object):
 				for x, page in enumerate(m):
 					print(x, page)
 					pages.append(page.content)
+				p.terminate()
 
 			else:
 				for x in range(random):
@@ -248,12 +311,28 @@ class MarkovBot(object):
 			print("\033[43m" + str(self) + " failed to generate message\033[0m")
 			return
 
+		for code in ('<!everyone>', '<!channel>', '<!here>'):
+			while code in message:
+				message = message.replace(code, '@'+code[2:-1])
+
+		mentions = self.handler.user_match.finditer(message)
+		if mentions:
+			for match in mentions:
+				text = match.group()
+
+				if '|' in text:
+					end = text.index('|')
+				else:
+					end = text.index('>')
+
+				username = self.handler.get_username(text[2:end])
+				if username:
+					message = message.replace(text, '@'+username)
+
 		print("\033[42m" + str(self) + " generated message to send to " + channel + ":\033[0m")
-		print(message)
+		print(message, '\n')
 		
 		response = self.post_message(channel, message)
-		print(response)
-		print()
 
 
 def get_rand_wiki_page(x=None):
@@ -290,6 +369,9 @@ class MarkovBotHandler(object):
 
 		self.last_ping = 0
 		self.slack_client = None
+
+		user_mention_regex = r"<@U[A-Z0-9]+(|\|[a-z0-9]+)>"
+		self.user_match = re.compile(user_mention_regex)
 
 		self.bots = []
 
