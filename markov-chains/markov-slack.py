@@ -13,26 +13,22 @@ sys.dont_write_bytecode = True
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
-MAX_OVERLAP_RATIO = 0.5
-MAX_OVERLAP_TOTAL = 10
-
-
 class TextModel(markovify.Text):
 	# stolen from subreddit simulator
-    def test_sentence_input(self, sentence):
-        return True
+	def test_sentence_input(self, sentence):
+		return True
 
-    def _prepare_text(self, text):
-        text = text.strip()
-        if not text.endswith((".", "?", "!")):
-            text += "."
-        return text
+	def _prepare_text(self, text):
+		text = text.strip()
+		if not text.endswith((".", "?", "!")):
+			text += "."
+		return text
 
-    def sentence_split(self, text):
-        lines = text.splitlines()
-        text = " ".join([self._prepare_text(line)
-            for line in lines if line.strip()])
-        return markovify.split_into_sentences(text)
+	def sentence_split(self, text):
+		lines = text.splitlines()
+		text = " ".join([self._prepare_text(line)
+			for line in lines if line.strip()])
+		return markovify.split_into_sentences(text)
 
 
 class MarkovBot(object):
@@ -63,26 +59,26 @@ class MarkovBot(object):
 
 		self.default_channel = self.config.get("default_channel", "random")
 		self.state_size = self.config.get("state_size", 2)
+		self.retrain_interval = self.config.get("retrain_interval", None)
+
+		self.max_tries = self.config.get("max_tries", 10000)
+		self.max_overlap_total = self.config.get("max_overlap_total", 10)
+		self.max_overlap_ratio = self.config.get("max_overlap_ratio", 0.5)
 
 		self.avg_comment_len = 1
 		self.training_messages = []
+		self.model = None
 
-		if "training_channels" in self.config:
-			for channel in self.config["training_channels"]:
-				self.train_from_channel(channel)
-		if "training_files" in self.config:
-			for filename in self.config["training_files"]:
-				self.train_from_file(filename)
+		self.prepare_training()
 		
 		if len(self.training_messages) == 0:
 			print("Nothing to train from!")
 			sys.exit(1)
 
-		self.model = self.make_model()
+		self.make_model()
 
 	def __repr__(self):
-		return "{}(name={})"\
-			.format(type(self).__name__, self.name)
+		return "{}".format(self.name)
 	__str__ = __repr__
 
 	def post_message(self, channel, message):
@@ -95,9 +91,6 @@ class MarkovBot(object):
 
 	def handle_event(self, data):
 		if data['type'] == 'message' and 'text' in data:
-			print("\033[43mReceived event:\033[0m")
-			print(data, '\n')
-
 			if 'user' in data:
 				user = self.handler.get_username(data['user'])
 			elif 'username' in data:
@@ -115,20 +108,47 @@ class MarkovBot(object):
 						self.last_post = now
 					self.create_message(channel)
 
-	def time_action(self):
+	def time_action(self, now):
 		if random.random() < self.rand_post_chance:
 			if self.min_wait:
-				now = int(time.time())
 				if now < self.last_post + self.min_wait:
 					return
 				self.last_post = now
 			self.create_message(self.default_channel)
+		if self.retrain_interval != None and now > self.last_trained + self.retrain_interval:
+			self.training_messages = []
+			self.prepare_training()
+			self.make_model()
+
+	def prepare_training(self):
+		if "train_channels" in self.config:
+			for channel in self.config["train_channels"]:
+				self.train_from_channel(channel)
+
+		if "train_files" in self.config:
+			for filename in self.config["train_files"]:
+				self.train_from_file(filename)
+
+		if "train_wiki_pages" in self.config:
+			for page in self.config["train_wiki_pages"]:
+				self.train_from_wikipedia(title=page)
+		if "train_wiki_random" in self.config:
+			self.train_from_wikipedia(random=self.config["train_wiki_random"], pool=True)
+
+		if "train_subreddits" in self.config:
+			for sub in self.config["train_subreddits"]:
+				self.train_from_reddit(sub)
+
+
 
 	def make_model(self):
 		print(str(self) + ": Creating model...")
 		random.shuffle(self.training_messages)
 		self.avg_comment_len = sum(map(len, self.training_messages)) / float(len(self.training_messages))
-		return TextModel("\n".join(self.training_messages), state_size=self.state_size)
+		self.avg_comment_len = min(self.avg_comment_len, 10)
+		self.model = TextModel("\n".join(self.training_messages), state_size=self.state_size)
+		self.last_trained = time.time()
+		return self.model
 
 	def train_from_channel(self, channel):
 		latest = time.time()
@@ -158,6 +178,43 @@ class MarkovBot(object):
 			if l.strip():
 				self.training_messages.append(l)
 
+	def train_from_reddit(self, subreddit):
+		raise NotImplemented
+
+	def train_from_wikipedia(self, title=None, random=1, pool=False):
+		import wikipedia
+
+		if pool:
+			from multiprocessing import Pool
+			global wikipedia
+		
+		pages = []
+
+		if title:
+			get_wiki_pages(title, random)
+			page = wikipedia.page(title=title)
+			pages.append(page.content)
+
+		else:
+			if pool:
+				p = Pool()
+				m = p.map(get_rand_wiki_page, range(random))
+				for x, page in enumerate(m):
+					print(x, page)
+					pages.append(page.content)
+
+			else:
+				for x in range(random):
+					page = get_rand_wiki_page()
+					print(x+1, page)
+					pages.append(page.content)
+
+		for page in pages:
+			for line in page.splitlines():
+				if line.split() and not line.startswith('=='):
+					self.training_messages.append(line)
+
+
 	def create_message(self, channel):
 		if not self.model:
 			return
@@ -178,20 +235,38 @@ class MarkovBot(object):
 			if random.random() > continue_chance:
 				break
 
-			new_sentence = self.model.make_sentence(tries=10000,
-			max_overlap_total=MAX_OVERLAP_TOTAL,
-			max_overlap_ratio=MAX_OVERLAP_RATIO)
+			new_sentence = self.model.make_sentence(tries=self.max_tries,
+			max_overlap_total=self.max_overlap_total,
+			max_overlap_ratio=self.max_overlap_ratio)
+			if not new_sentence:
+				break
 
 			message += " " + new_sentence
 
 		message = message.strip()
+		if not message:
+			print("\033[43m" + str(self) + " failed to generate message\033[0m")
+			return
 
-		print("\033[42mGenerated message to send to " + channel + ":\033[0m")
+		print("\033[42m" + str(self) + " generated message to send to " + channel + ":\033[0m")
 		print(message)
 		
 		response = self.post_message(channel, message)
 		print(response)
 		print()
+
+
+def get_rand_wiki_page(x=None):
+	try:
+		try:
+			return wikipedia.page(wikipedia.random())
+		except wikipedia.exceptions.DisambiguationError as e:
+			try:
+				return wikipedia.page(random.choice(e.options))
+			except wikipedia.exceptions.DisambiguationError as e:
+				return get_rand_wiki_page()
+	except wikipedia.exceptions.PageError:
+		return get_rand_wiki_page()
 
 
 class MarkovBotHandler(object):
@@ -280,18 +355,23 @@ class MarkovBotHandler(object):
 		self.connect()
 		self.find_bots()
 		print("Successfully initialized", len(self.bots), "bots")
+
 		while True:
 			for reply in self.slack_client.rtm_read():
+				if reply['type'] == 'message' and 'text' in reply:
+					print("\033[44mReceived event:\033[0m")
+					print(reply, '\n')
+
 				for bot in self.bots:
 					bot.handle_event(reply)
-			self.autoping()
+
+			now = time.time()
+			self.autoping(now)
 			for bot in self.bots:
-				bot.time_action()
+				bot.time_action(now)
 			time.sleep(.1)
 
-	def autoping(self):
-		# hardcode the interval to 3 seconds
-		now = int(time.time())
+	def autoping(self, now):
 		if now > self.last_ping + 3:
 			self.slack_client.server.ping()
 			self.last_ping = now

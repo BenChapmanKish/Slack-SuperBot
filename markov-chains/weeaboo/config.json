@@ -3,7 +3,7 @@
 	"name": "WeebBot",
 	"icon": "http://vignette2.wikia.nocookie.net/cardfight/images/c/c0/Angel_beats_pink_hair_wink_eyes_anime_girls_desktop_4000x2250_hd-wallpaper-886986.jpg/revision/latest?cb=20150706201429",
 	"default_channel": "#bot-fun",
-	"training_channels": ["#weebland"],
+	"train_channels": ["#weebland"],
 	"ignored_users": ["U249VP6H2"],
 	"rand_post_chance": 1,
 	"min_wait": 5

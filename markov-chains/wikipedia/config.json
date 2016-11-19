@@ -1,0 +1,12 @@
+{
+	"ignore": true,
+	"name": "WikiBot",
+	"icon": "https://upload.wikimedia.org/wikipedia/en/thumb/8/80/Wikipedia-logo-v2.svg/1122px-Wikipedia-logo-v2.svg.png",
+	"default_channel": "#bot-fun",
+	"train_wiki_random": 100,
+	"retrain_interval": 60,
+	"state_size": 2,
+	"max_overlap_ratio": 0.3,
+	"rand_post_chance": 1,
+	"min_wait": 5
+}
