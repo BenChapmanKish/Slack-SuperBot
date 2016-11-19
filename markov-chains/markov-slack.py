@@ -2,6 +2,8 @@
 # Ben Chapman-Kish
 # 2016-11-17
 
+# TODO: Comment and document this file like crazy
+
 import sys, os
 import argparse
 import json
@@ -68,12 +70,16 @@ class MarkovBot(object):
 		self.max_overlap_total = self.config.get("max_overlap_total", 10)
 		self.max_overlap_ratio = self.config.get("max_overlap_ratio", 0.5)
 
+		self.reddit_post_sort = self.config.get("reddit_post_sort", "hot") # 'hot', 'new', 'controversial', 'top'
+		self.reddit_post_time = self.config.get("reddit_post_time", "all") # 'all', 'day', 'hour', 'month', 'week', 'year'
 		self.reddit_post_limit = self.config.get("reddit_post_limit", 100)
 		self.reddit_ignore_mod = self.config.get("reddit_ignore_mod", True)
+
 		self.reddit_title_train = self.config.get("reddit_title_train", True)
 		self.reddit_self_train = self.config.get("reddit_self_train", True)
 		self.reddit_link_train = self.config.get("reddit_link_train", False)
 		self.reddit_comment_train = self.config.get("reddit_comment_train", True)
+
 		self.reddit_session = None
 
 		self.avg_comment_len = 1
@@ -152,8 +158,14 @@ class MarkovBot(object):
 
 		if "train_files" in self.config:
 			print("Training from files:", self.config["train_files"])
-			for filename in self.config["train_files"]:
-				self.train_from_file(filename)
+			if self.config["train_files"] == "all":
+				files = os.listdir(self.directory)
+				for filename in files:
+					if filename[0] != '.' and filename.endswith('.txt'):
+						self.train_from_file(os.path.join(self.directory, filename))
+			else:
+				for filename in self.config["train_files"]:
+					self.train_from_file(os.path.join(self.directory, filename))
 
 		if "train_wiki_pages" in self.config:
 			print("Training from wikipedia articles:", self.config["train_wiki_pages"])
@@ -185,10 +197,11 @@ class MarkovBot(object):
 		try:
 			while self.thread_done < self.total_threads:
 				pass
-			time.sleep(0.5)
 		except KeyboardInterrupt:
 			self.thread_go = False
-			print("\nStopped bot instance")
+			print("\nStopped bot training")
+		finally:
+			time.sleep(0.5)
 
 
 
@@ -241,7 +254,17 @@ class MarkovBot(object):
 		else:
 			subreddit = self.reddit_session.random_subreddit()
 		
-		submissions = subreddit.hot(limit=self.reddit_post_limit)
+		if self.reddit_post_sort in ('new', 0):
+			submissions = subreddit.new(limit=self.reddit_post_limit)
+		elif self.reddit_post_sort in ('hot', 1):
+			submissions = subreddit.hot(limit=self.reddit_post_limit)
+		elif self.reddit_post_sort in ('top', 2):
+			submissions = subreddit.top(limit=self.reddit_post_limit, time_filter=self.reddit_post_time)
+		elif self.reddit_post_sort in ('controversial', 3):
+			submissions = subreddit.controversial(limit=self.reddit_post_limit, time_filter=self.reddit_post_time)
+		else:
+			print("\033[43mUnrecognized subreddit sort:", self.reddit_post_sort, "\033[0m")
+			return
 
 		for sub in submissions:
 			if self.train_pool and not self.thread_go:
@@ -330,10 +353,11 @@ class MarkovBot(object):
 				self.get_rand_wiki_page()
 
 
-	def create_message(self, channel):
+	def create_message(self, orig_channel):
 		if not self.model:
 			return
 
+		channel = orig_channel
 		if type(channel) == str and len(channel) > 0:
 			if channel[0] == '#':
 				channel = self.handler.get_channel_id(channel[1:])
@@ -381,7 +405,7 @@ class MarkovBot(object):
 				if username:
 					message = message.replace(text, '@'+username)
 
-		print("\033[42m" + str(self) + " generated message to send to @" + str(self.handler.get_channel(channel)) + ":\033[0m")
+		print("\033[42m" + str(self) + " generated message to send to " + str(orig_channel) + ":\033[0m")
 		print(message, '\n')
 		
 		response = self.post_message(channel, message)
@@ -480,7 +504,7 @@ class MarkovBotHandler(object):
 
 		while True:
 			for reply in self.slack_client.rtm_read():
-				if reply['type'] == 'message' and 'text' in reply:
+				if 'type' in reply and reply['type'] == 'message' and 'text' in reply:
 					print("\033[44mReceived event:\033[0m")
 					print(reply, '\n')
 
