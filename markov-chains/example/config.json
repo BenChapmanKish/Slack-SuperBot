@@ -1,6 +1,7 @@
 {
 	"name": "MarkovBot",
 	"default_channel": "#random",
+	"ignore": true,
 
 	"train_channels": ["#general", "#random"],
 	"train_wiki_random": 5,

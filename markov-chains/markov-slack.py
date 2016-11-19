@@ -9,7 +9,6 @@ import time
 import random
 import markovify
 import re
-from pprint import pprint
 from slackclient import SlackClient
 sys.dont_write_bytecode = True
 
@@ -63,6 +62,7 @@ class MarkovBot(object):
 		self.default_channel = self.config.get("default_channel", "#random")
 		self.state_size = self.config.get("state_size", 2)
 		self.retrain_interval = self.config.get("retrain_interval", None)
+		self.train_pool = self.config.get("train_pool", True)
 
 		self.max_tries = self.config.get("max_tries", 10000)
 		self.max_overlap_total = self.config.get("max_overlap_total", 10)
@@ -81,7 +81,7 @@ class MarkovBot(object):
 		self.model = None
 
 		self.prepare_training()
-		
+
 		if len(self.training_messages) == 0:
 			print("Nothing to train from!")
 			sys.exit(1)
@@ -109,7 +109,7 @@ class MarkovBot(object):
 			channel = data['channel']
 
 			if self.ignore_self and user.lower() == self.name:
-				continue
+				return
 
 			if user.lower() not in list(self.ignored_users) and \
 			(self.allowed_channels and self.handler.get_channel(channel).lower() in self.allowed_channels):
@@ -135,6 +135,10 @@ class MarkovBot(object):
 			self.make_model()
 
 	def prepare_training(self):
+		self.thread_done = 0
+		self.total_threads = 0
+		self.thread_go = True
+
 		if "train_channels" in self.config:
 			print("Training from channels:", self.config["train_channels"])
 			if self.config["train_channels"] == "all":
@@ -154,20 +158,37 @@ class MarkovBot(object):
 		if "train_wiki_pages" in self.config:
 			print("Training from wikipedia articles:", self.config["train_wiki_pages"])
 			for page in self.config["train_wiki_pages"]:
-				self.train_from_wikipedia(title=page)
+				self.train_from_wikipedia(page)
 		if "train_wiki_random" in self.config:
 			print("Training from", self.config["train_wiki_random"], "random wikipedia articles:")
-			self.train_from_wikipedia(random=self.config["train_wiki_random"])
+			for x in range(self.config["train_wiki_random"]):
+				self.train_from_wikipedia()
 
 		if "train_subreddits" in self.config:
 			print("Training from subreddits:", self.config["train_subreddits"])
-			for sub in self.config["train_subreddits"]:
-				self.train_from_reddit(sub)
+			if self.train_pool:
+				from threading import Thread
+				for sub in self.config["train_subreddits"]:
+					self.total_threads += 1
+					t = Thread(target=self.train_from_reddit, args=(sub,))
+					t.start()
+
+			else:
+				for sub in self.config["train_subreddits"]:
+					self.train_from_reddit(sub)
 
 		if "train_random_subs" in self.config:
 			print("Training from", int(self.config["train_random_subs"]), "random subreddits")
 			for x in range(self.config["train_random_subs"]):
 				self.train_from_reddit()
+
+		try:
+			while self.thread_done < self.total_threads:
+				pass
+			time.sleep(0.5)
+		except KeyboardInterrupt:
+			self.thread_go = False
+			print("\nStopped bot instance")
 
 
 
@@ -223,6 +244,8 @@ class MarkovBot(object):
 		submissions = subreddit.hot(limit=self.reddit_post_limit)
 
 		for sub in submissions:
+			if self.train_pool and not self.thread_go:
+				break
 			if (sub.stickied or sub.distinguished) and self.reddit_ignore_mod:
 				continue
 			author = (sub.author.name if sub.author else '[deleted]')
@@ -246,39 +269,65 @@ class MarkovBot(object):
 						if l:
 							self.training_messages.append(l)
 
-	def train_from_wikipedia(self, title=None, random=1, pool=False):
-		import wikipedia
+		if self.train_pool:
+			self.thread_done += 1
 
-		if pool:
-			from multiprocessing import Pool
+
+	def get_rand_wiki_page(self):
+		try:
+			try:
+				page = wikipedia.page(wikipedia.random())
+			except wikipedia.exceptions.DisambiguationError as e:
+				try:
+					page = wikipedia.page(random.choice(e.options))
+				except wikipedia.exceptions.DisambiguationError as e:
+					page = self.get_rand_wiki_page()
+		except wikipedia.exceptions.PageError:
+			page = self.get_rand_wiki_page()
+
+		if (self.train_pool and not self.thread_go) or not page:
+			return
+		print("\033[35mArticle: \033[0m" + page.title)
+		for line in page.content.splitlines():
+			if line.split() and not line.startswith('=='):
+				self.training_messages.append(line)
+
+		if self.train_pool:
+			self.thread_done += 1
+
+	def train_from_wikipedia(self, title=None):
+		import wikipedia
+		if self.train_pool:
+			from threading import Thread
 			global wikipedia
-		
-		pages = []
 
 		if title:
-			get_wiki_pages(title, random)
-			page = wikipedia.page(title=title)
-			pages.append(page.content)
+			try:
+				try:
+					page = wikipedia.page(title=title)
+				except wikipedia.exceptions.DisambiguationError as e:
+					try:
+						page = wikipedia.page(e.options[0])
+					except wikipedia.exceptions.DisambiguationError as e:
+						print("\033[43mCould not find wikipedia article for " + title + "\033[0m")
+						return
+			except wikipedia.exceptions.PageError:
+				print("\033[43mCould not find wikipedia article for " + title + "\033[0m")
+				return
 
-		else:
-			if pool:
-				p = Pool()
-				m = p.map(get_rand_wiki_page, range(random))
-				for x, page in enumerate(m):
-					print(x, page)
-					pages.append(page.content)
-				p.terminate()
 
-			else:
-				for x in range(random):
-					page = get_rand_wiki_page()
-					print(x+1, page)
-					pages.append(page.content)
-
-		for page in pages:
-			for line in page.splitlines():
+			print("\033[35mArticle: \033[0m" + page.title)
+			for line in page.content.splitlines():
 				if line.split() and not line.startswith('=='):
 					self.training_messages.append(line)
+
+		else:
+			if self.train_pool:
+				self.total_threads += 1
+				t = Thread(target=self.get_rand_wiki_page)
+				t.start()
+			else:
+				self.get_rand_wiki_page()
 
 
 	def create_message(self, channel):
@@ -332,23 +381,11 @@ class MarkovBot(object):
 				if username:
 					message = message.replace(text, '@'+username)
 
-		print("\033[42m" + str(self) + " generated message to send to " + channel + ":\033[0m")
+		print("\033[42m" + str(self) + " generated message to send to @" + str(self.handler.get_channel(channel)) + ":\033[0m")
 		print(message, '\n')
 		
 		response = self.post_message(channel, message)
 
-
-def get_rand_wiki_page(x=None):
-	try:
-		try:
-			return wikipedia.page(wikipedia.random())
-		except wikipedia.exceptions.DisambiguationError as e:
-			try:
-				return wikipedia.page(random.choice(e.options))
-			except wikipedia.exceptions.DisambiguationError as e:
-				return get_rand_wiki_page()
-	except wikipedia.exceptions.PageError:
-		return get_rand_wiki_page()
 
 
 class MarkovBotHandler(object):
