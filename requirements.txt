@@ -1,9 +1,0 @@
-slackclient>=1.0.1
-markovify>=0.4.3
-wikipedia>=1.4.0
-names>=0.3.0
-google-api-python-client>=1.5.5
-praw>=2.1.21
-pytz>=2015.4
-requests>=2.11.1
-SQLAlchemy>=1.0.8

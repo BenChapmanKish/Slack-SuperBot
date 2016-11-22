@@ -1,3 +1,5 @@
 {
-	"credentials": "../credentials.json"
+	"credentials": "../credentials.json",
+	"train_threading": false,
+	"ignored_bots": ["example", "gravityfalls"]
 }

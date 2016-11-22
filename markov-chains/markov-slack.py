@@ -64,21 +64,29 @@ class MarkovBot(object):
 		self.default_channel = self.config.get("default_channel", "#random")
 		self.state_size = self.config.get("state_size", 2)
 		self.retrain_interval = self.config.get("retrain_interval", None)
-		self.train_pool = self.config.get("train_pool", True)
+		self.train_threading = self.handler.train_threading
 
 		self.max_tries = self.config.get("max_tries", 10000)
 		self.max_overlap_total = self.config.get("max_overlap_total", 10)
 		self.max_overlap_ratio = self.config.get("max_overlap_ratio", 0.5)
 
-		self.reddit_post_sort = self.config.get("reddit_post_sort", "hot") # 'hot', 'new', 'controversial', 'top'
-		self.reddit_post_time = self.config.get("reddit_post_time", "all") # 'all', 'day', 'hour', 'month', 'week', 'year'
-		self.reddit_post_limit = self.config.get("reddit_post_limit", 100)
-		self.reddit_ignore_mod = self.config.get("reddit_ignore_mod", True)
+		self.block_user_mentions = self.config.get("block_user_mentions", True)
+		self.block_links = self.config.get("block_links", False)
 
-		self.reddit_title_train = self.config.get("reddit_title_train", True)
-		self.reddit_self_train = self.config.get("reddit_self_train", True)
-		self.reddit_link_train = self.config.get("reddit_link_train", False)
-		self.reddit_comment_train = self.config.get("reddit_comment_train", True)
+		self.reddit_config = {}
+
+		self.reddit_config['post_sort'] = self.config.get("reddit_post_sort", "hot") # 'hot', 'new', 'controversial', 'top'
+		self.reddit_config['post_time'] = self.config.get("reddit_post_time", "all") # 'all', 'day', 'hour', 'month', 'week', 'year'
+		self.reddit_config['post_limit_total'] = self.config.get("reddit_post_limit_total", 50) # total posts to train from
+		self.reddit_config['post_limit'] = self.config.get("reddit_post_limit", None) # posts per subreddit to train from (overrides total)
+
+		self.reddit_config['ignore_mod'] = self.config.get("reddit_ignore_mod", True)
+		self.reddit_config['ignore_nsfw'] = self.config.get("reddit_ignore_nsfw", True)
+
+		self.reddit_config['title_train'] = self.config.get("reddit_title_train", True)
+		self.reddit_config['self_train'] = self.config.get("reddit_self_train", True)
+		self.reddit_config['link_train'] = self.config.get("reddit_link_train", False)
+		self.reddit_config['comment_train'] = self.config.get("reddit_comment_train", True)
 
 		self.reddit_session = None
 
@@ -89,13 +97,13 @@ class MarkovBot(object):
 		self.prepare_training()
 
 		if len(self.training_messages) == 0:
-			print("Nothing to train from!")
+			print("\033[31mNothing to train from!\033[0m")
 			sys.exit(1)
 
 		self.make_model()
 
 	def __repr__(self):
-		return "{}".format(self.name)
+		return (self.name if self.name else type(self).__name__)
 	__str__ = __repr__
 
 	def post_message(self, channel, message):
@@ -107,7 +115,7 @@ class MarkovBot(object):
 		return json.loads(response)
 
 	def handle_event(self, data):
-		if data['type'] == 'message' and 'text' in data:
+		if 'type' in data and data['type'] == 'message' and 'text' in data:
 			if 'user' in data:
 				user = self.handler.get_username(data['user'])
 			elif 'username' in data:
@@ -120,7 +128,7 @@ class MarkovBot(object):
 			if user.lower() not in list(self.ignored_users) and \
 			(self.allowed_channels and self.handler.get_channel(channel).lower() in self.allowed_channels):
 
-				if random.random() < self.rand_post_chance:
+				if random.random() < self.rand_post_chance / 100.0:
 					if self.min_wait:
 						now = int(time.time())
 						if now < self.last_post + self.min_wait:
@@ -129,7 +137,7 @@ class MarkovBot(object):
 					self.create_message(channel)
 
 	def time_action(self, now):
-		if random.random() < self.rand_post_chance:
+		if random.random() < self.rand_post_chance / 100.0:
 			if self.min_wait:
 				if now < self.last_post + self.min_wait:
 					return
@@ -141,72 +149,120 @@ class MarkovBot(object):
 			self.make_model()
 
 	def prepare_training(self):
-		self.thread_done = 0
-		self.total_threads = 0
-		self.thread_go = True
+		if self.train_threading:
+			from threading import Thread
+			global Thread
+			self.thread_done = 0
+			self.total_threads = 0
+			self.thread_go = True
+
+		print("\033[42m" + str(self) + ": Preparing to train...\033[0m")
 
 		if "train_channels" in self.config:
-			print("Training from channels:", self.config["train_channels"])
 			if self.config["train_channels"] == "all":
 				channels = self.api_call('channels.list')['channels']
 				for channel in channels:
+					if "train_channels_ignore" in self.config:
+						if '#'+channel['name'] in self.config['train_channels_ignore']:
+							continue
+					print("\033[44mChannel: #" + str(channel['name']) + "\033[0m")
 					self.train_from_channel(channel['id'])
 
 			else:
 				for channel in self.config["train_channels"]:
+					print("\033[44mChannel: " + str(channel) + "\033[0m")
 					self.train_from_channel(channel)
 
 		if "train_files" in self.config:
-			print("Training from files:", self.config["train_files"])
 			if self.config["train_files"] == "all":
 				files = os.listdir(self.directory)
 				for filename in files:
 					if filename[0] != '.' and filename.endswith('.txt'):
+						print("\033[44mFile: " + filename + "\033[0m")
 						self.train_from_file(os.path.join(self.directory, filename))
 			else:
 				for filename in self.config["train_files"]:
+					print("\033[44mFile: " + filename + "\033[0m")
 					self.train_from_file(os.path.join(self.directory, filename))
 
 		if "train_wiki_pages" in self.config:
-			print("Training from wikipedia articles:", self.config["train_wiki_pages"])
 			for page in self.config["train_wiki_pages"]:
 				self.train_from_wikipedia(page)
 		if "train_wiki_random" in self.config:
-			print("Training from", self.config["train_wiki_random"], "random wikipedia articles:")
 			for x in range(self.config["train_wiki_random"]):
 				self.train_from_wikipedia()
 
-		if "train_subreddits" in self.config:
-			print("Training from subreddits:", self.config["train_subreddits"])
-			if self.train_pool:
-				from threading import Thread
-				for sub in self.config["train_subreddits"]:
+		
+
+		if "train_subreddits_default" in self.config:
+			config = self.reddit_config
+			if not self.reddit_config['post_limit']:
+				config['post_limit'] = self.reddit_config['post_limit_total'] / len(self.config["train_subreddits_default"])
+
+			if self.train_threading:
+				for sub in self.config["train_subreddits_default"]:
 					self.total_threads += 1
-					t = Thread(target=self.train_from_reddit, args=(sub,))
+					t = Thread(target=self.train_from_reddit, args=(config, sub))
+					t.start()
+
+			else:
+				for sub in self.config["train_subreddits_default"]:
+					self.train_from_reddit(config, sub)
+
+		if "train_subreddits" in self.config:
+			reddit_config = {}
+			reddit_config.update(self.reddit_config)
+			if not self.reddit_config['post_limit']:
+				reddit_config['post_limit'] = self.reddit_config['post_limit_total'] / len(self.config["train_subreddits"])
+
+			if self.train_threading:
+				for sub in self.config["train_subreddits"]:
+					config = {}
+					config.update(reddit_config)
+					config.update(sub)
+					print(config)
+
+					if 'name' not in config:
+						print("\033[31mError: No name in training subreddit\033[0m")
+						sys.exit(-1)
+
+					self.total_threads += 1
+					t = Thread(target=self.train_from_reddit, args=(config, config['name']))
 					t.start()
 
 			else:
 				for sub in self.config["train_subreddits"]:
-					self.train_from_reddit(sub)
+					config = {}
+					config.update(reddit_config)
+					config.update(sub)
+					print(config)
+
+					if 'name' not in config:
+						print("\033[31mError: No name in training subreddit\033[0m")
+						sys.exit(-1)
+
+					self.train_from_reddit(config, config['name'])
 
 		if "train_random_subs" in self.config:
-			print("Training from", int(self.config["train_random_subs"]), "random subreddits")
 			for x in range(self.config["train_random_subs"]):
-				self.train_from_reddit()
+				self.train_from_reddit(self.config)
 
-		try:
-			while self.thread_done < self.total_threads:
-				pass
-		except KeyboardInterrupt:
-			self.thread_go = False
-			print("\nStopped bot training")
-		finally:
-			time.sleep(0.5)
+		
+
+		if self.train_threading:
+			try:
+				while self.thread_done < self.total_threads:
+					pass
+			except KeyboardInterrupt:
+				self.thread_go = False
+				print("\nStopped bot training")
+			finally:
+				time.sleep(0.5)
 
 
 
 	def make_model(self):
-		print(str(self) + ": Creating model...")
+		print("\033[42m" + str(self) + ": Creating model...\033[0m")
 		random.shuffle(self.training_messages)
 		self.avg_comment_len = sum(map(len, self.training_messages)) / float(len(self.training_messages))
 		self.avg_comment_len = min(self.avg_comment_len, 10)
@@ -243,7 +299,7 @@ class MarkovBot(object):
 			if l:
 				self.training_messages.append(l)
 
-	def train_from_reddit(self, subreddit_name=None):
+	def train_from_reddit(self, config, subreddit_name=None):
 		if not self.reddit_session:
 			import praw
 			self.reddit_session = praw.Reddit(user_agent="Slack-SuperBot", \
@@ -253,37 +309,45 @@ class MarkovBot(object):
 			subreddit = self.reddit_session.subreddit(subreddit_name)
 		else:
 			subreddit = self.reddit_session.random_subreddit()
+			while config['ignore_nsfw'] and subreddit.over18:
+				subreddit = self.reddit_session.random_subreddit()
+
+		print("\033[44mSubreddit: " + str(subreddit.display_name) + "\033[0m")
 		
-		if self.reddit_post_sort in ('new', 0):
-			submissions = subreddit.new(limit=self.reddit_post_limit)
-		elif self.reddit_post_sort in ('hot', 1):
-			submissions = subreddit.hot(limit=self.reddit_post_limit)
-		elif self.reddit_post_sort in ('top', 2):
-			submissions = subreddit.top(limit=self.reddit_post_limit, time_filter=self.reddit_post_time)
-		elif self.reddit_post_sort in ('controversial', 3):
-			submissions = subreddit.controversial(limit=self.reddit_post_limit, time_filter=self.reddit_post_time)
+		if config['post_sort'] in ('new', 0):
+			submissions = subreddit.new(limit=config['post_limit'])
+		elif config['post_sort'] in ('hot', 1):
+			submissions = subreddit.hot(limit=config['post_limit'])
+		elif config['post_sort'] in ('top', 2):
+			submissions = subreddit.top(limit=config['post_limit'], time_filter=config['post_time'])
+		elif config['post_sort'] in ('controversial', 3):
+			submissions = subreddit.controversial(limit=config['post_limit'], time_filter=config['post_time'])
 		else:
-			print("\033[43mUnrecognized subreddit sort:", self.reddit_post_sort, "\033[0m")
+			print("\033[43mUnrecognized subreddit sort:", config['post_sort'], "\033[0m")
 			return
 
 		for sub in submissions:
-			if self.train_pool and not self.thread_go:
+			if self.train_threading and not self.thread_go:
 				break
-			if (sub.stickied or sub.distinguished) and self.reddit_ignore_mod:
+			elif config['ignore_mod'] and (sub.stickied or sub.distinguished):
 				continue
+			elif config['ignore_nsfw'] and sub.over_18:
+				continue
+
 			author = (sub.author.name if sub.author else '[deleted]')
 			print("\033[35mSubmission by " + author + ":\033[0m " + sub.title)
-			if self.reddit_title_train:
+			if config['title_train']:
 				self.training_messages.append(sub.title)
-			if sub.is_self and self.reddit_self_train:
-				for line in sub.selftext.splitlines():
-					l = line.strip()
-					if l:
-						self.training_messages.append(l)
-			elif self.reddit_link_train:
+			if config['self_train']:
+				if sub.is_self:
+					for line in sub.selftext.splitlines():
+						l = line.strip()
+						if l:
+							self.training_messages.append(l)
+			elif config['link_train']:
 				self.training_messages.append(sub.url)
 
-			if self.reddit_comment_train:
+			if config['comment_train']:
 				sub.comments.replace_more()
 				comments = sub.comments.list()
 				for comment in comments:
@@ -292,7 +356,7 @@ class MarkovBot(object):
 						if l:
 							self.training_messages.append(l)
 
-		if self.train_pool:
+		if self.train_threading:
 			self.thread_done += 1
 
 
@@ -308,20 +372,19 @@ class MarkovBot(object):
 		except wikipedia.exceptions.PageError:
 			page = self.get_rand_wiki_page()
 
-		if (self.train_pool and not self.thread_go) or not page:
+		if (self.train_threading and not self.thread_go) or not page:
 			return
-		print("\033[35mArticle: \033[0m" + page.title)
+		print("\033[44mArticle: " + page.title + "\033[0m")
 		for line in page.content.splitlines():
 			if line.split() and not line.startswith('=='):
 				self.training_messages.append(line)
 
-		if self.train_pool:
+		if self.train_threading:
 			self.thread_done += 1
 
 	def train_from_wikipedia(self, title=None):
 		import wikipedia
-		if self.train_pool:
-			from threading import Thread
+		if self.train_threading:
 			global wikipedia
 
 		if title:
@@ -345,7 +408,7 @@ class MarkovBot(object):
 					self.training_messages.append(line)
 
 		else:
-			if self.train_pool:
+			if self.train_threading:
 				self.total_threads += 1
 				t = Thread(target=self.get_rand_wiki_page)
 				t.start()
@@ -387,23 +450,27 @@ class MarkovBot(object):
 			print("\033[43m" + str(self) + " failed to generate message\033[0m")
 			return
 
-		for code in ('<!everyone>', '<!channel>', '<!here>'):
-			while code in message:
-				message = message.replace(code, '@'+code[2:-1])
+		if self.block_user_mentions:
+			for code in ('<!everyone>', '<!channel>', '<!here>'):
+				while code in message:
+					message = message.replace(code, '@'+code[2:-1])
 
-		mentions = self.handler.user_match.finditer(message)
-		if mentions:
-			for match in mentions:
-				text = match.group()
+			mentions = self.handler.user_match.finditer(message)
+			if mentions:
+				for match in mentions:
+					text = match.group()
 
-				if '|' in text:
-					end = text.index('|')
-				else:
-					end = text.index('>')
+					if '|' in text:
+						end = text.index('|')
+					else:
+						end = text.index('>')
 
-				username = self.handler.get_username(text[2:end])
-				if username:
-					message = message.replace(text, '@'+username)
+					username = self.handler.get_username(text[2:end])
+					if username:
+						message = message.replace(text, '@'+username)
+
+		if self.block_links:
+			message = message.replace('http://', '').replace('https://', '')
 
 		print("\033[42m" + str(self) + " generated message to send to " + str(orig_channel) + ":\033[0m")
 		print(message, '\n')
@@ -423,6 +490,10 @@ class MarkovBotHandler(object):
 
 		# set working directory for loading plugins or other files
 		self.directory = self.config.get('base_path', this_dir)
+		self.test_mode = self.config.get('test_mode', False)
+		self.no_break = self.config.get('no_break', False)
+		self.ignored_bots = self.config.get('ignored_bots', [])
+		self.train_threading = self.config.get("train_threading", True)
 		
 		if self.directory.startswith('~'):
 			path = os.path.join(os.path.expanduser('~'), self.directory)
@@ -482,8 +553,12 @@ class MarkovBotHandler(object):
 	def find_bots(self):
 		for item in os.listdir(self.directory):
 			if os.path.isdir(item):
+				if item in self.ignored_bots:
+					print("\033[33mIgnoring " + item + "\033[0m")
+					continue
 				if 'specified_bots' in self.config:
 					if item not in self.config['specified_bots']:
+						print("\033[33mIgnoring " + item + "\033[0m")
 						continue
 
 				bot_dir = os.path.join(self.directory, item)
@@ -491,8 +566,12 @@ class MarkovBotHandler(object):
 				if os.path.isfile(os.path.join(bot_dir, 'config.json')):
 					config = json.load(open(os.path.join(bot_dir, 'config.json')))
 					if config.get('ignore', False) and 'specified_bots' not in self.config:
+						print("\033[33mIgnoring " + item + "\033[0m")
 						continue
 
+				if self.test_mode:
+					config['rand_post_chance'] = 100
+					config['min_wait'] = 1
 				self.bots.append(MarkovBot(self, bot_dir, config))
 
 
@@ -509,12 +588,28 @@ class MarkovBotHandler(object):
 					print(reply, '\n')
 
 				for bot in self.bots:
-					bot.handle_event(reply)
+					if self.no_break:
+						try:
+							bot.handle_event(reply)
+						except Exception as e:
+							print("\033[31mException in bot " + str(bot) + ":\033[0m")
+							print(e)
+					else:
+						bot.handle_event(reply)
 
 			now = time.time()
 			self.autoping(now)
+
 			for bot in self.bots:
-				bot.time_action(now)
+				if self.no_break:
+					try:
+						bot.time_action(now)
+					except Exception as e:
+						print("\033[31mException in bot " + str(bot) + ":\033[0m")
+						print(e)
+				else:
+					bot.time_action(now)
+
 			time.sleep(.1)
 
 	def autoping(self, now):
@@ -529,7 +624,10 @@ def get_config():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--credentials', help='Credentials', type=str)
 	parser.add_argument('--config', help='Config', default='config.json', type=str)
+	parser.add_argument('--no-break', dest='no_break', help="Ignore errors caused by specific bot configurations", action='store_true')
 	parser.add_argument('--base_path', help='Base path for markov bots', default=this_dir, type=str)
+	parser.add_argument('--train-threading', dest='train_threading', help='Train with threading', action='store_true')
+	parser.add_argument('-t', '--test-mode', dest='test_mode', help='Run bots at high speeds for testing', action='store_true')
 	parser.add_argument('-b', '--specify-bot', dest='specified_bots', help='Specify a bot to run, ignoring other bots', action='append', type=str)
 	parsed = parser.parse_args()
 
