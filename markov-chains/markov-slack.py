@@ -23,7 +23,7 @@ class TextModel(markovify.Text):
 
 	def _prepare_text(self, text):
 		text = text.strip()
-		if not text.endswith((".", "?", "!")):
+		if not text.endswith((".", "?", "!", ",")):
 			text += "."
 		return text
 
@@ -37,6 +37,60 @@ class TextModel(markovify.Text):
 class MarkovBot(object):
 	# This was going to be fully abstract, but then I decided it wasn't worth it
 	def __init__(self, handler, directory, config={}):
+		"""
+			Config properties that the bot considers:
+
+			name
+			icon
+
+			default_channel
+			slack_message_limit
+			training_users
+			ignored_users
+			allowed_channels
+			ignore_self
+
+			block_user_mentions
+			block_links
+
+			rand_post_chance
+			min_wait
+			retrain_interval
+
+			state_size
+			max_tries
+			max_overlap_ratio
+			max_overlap_total
+
+			
+
+			train_channels
+			train_channels_ignore
+			train_files
+			train_wiki_pages
+			train_wiki_random
+
+
+
+			train_subreddits_default
+			train_subreddits
+			train_random_subs
+
+
+			post_sort
+			post_time
+			post_limit_total
+			post_limit
+
+			ignore_mod
+			ignore_nsfw
+
+			title_train
+			self_train
+			link_train
+			comment_train
+		"""
+
 		self.handler = handler
 		self.directory = directory
 		self.config = config
@@ -50,13 +104,20 @@ class MarkovBot(object):
 		self.icon = self.config.get("icon", None)
 
 		self.ignore_self = self.config.get("ignore_self", True)
-		self.allowed_channels = self.ignored_users = []
+		self.allowed_channels = []
+		self.training_users = []
+		self.ignored_users = []
+		
 		if "ignored_users" in self.config:
-			self.ignored_users = map(str.lower, self.config["ignored_users"])
-		if "allowed_channels" in self.config:
-			self.allowed_channels = map(str.lower, self.config["allowed_channels"])
+			self.ignored_users = list(map(str.lower, self.config["ignored_users"]))
 
-		self.slack_message_limit = self.config.get("slack_message_limit", 10) # hundreds of messages to train with
+		if "training_users" in self.config:
+			self.training_users = list(map(str.lower, self.config["training_users"]))
+
+		if "allowed_channels" in self.config:
+			self.allowed_channels = list(map(str.lower, self.config["allowed_channels"]))
+
+		self.slack_message_limit = self.config.get("slack_message_limit", 10) # as hundreds of messages to train with
 		self.rand_post_chance = self.config.get("rand_post_chance", 0)
 		self.min_wait = self.config.get("min_wait", 0)
 		self.last_post = 0
@@ -92,6 +153,7 @@ class MarkovBot(object):
 
 		self.avg_comment_len = 1
 		self.training_messages = []
+		self.sent_messages = set()
 		self.model = None
 
 		self.prepare_training()
@@ -125,7 +187,7 @@ class MarkovBot(object):
 			if self.ignore_self and user.lower() == self.name:
 				return
 
-			if user.lower() not in list(self.ignored_users) and \
+			if user.lower() not in self.ignored_users and \
 			(self.allowed_channels and self.handler.get_channel(channel).lower() in self.allowed_channels):
 
 				if random.random() < self.rand_post_chance / 100.0:
@@ -278,6 +340,8 @@ class MarkovBot(object):
 			elif channel[0] == '@':
 				channel = self.handler.get_user_id(channel[1:])
 
+		usercache={}
+
 		for i in range(max(1, self.slack_message_limit)):
 			response = self.api_call('channels.history', {"channel": channel, "count": 100, "latest": latest})
 			if not response['ok']:
@@ -285,7 +349,22 @@ class MarkovBot(object):
 				sys.exit(1)
 			for m in response['messages']:
 				if m['type'] == 'message' and 'text' in m:
-					self.training_messages.append(m['text'])
+					if 'user' in m:
+						if m['user'] in usercache:
+							user = usercache[m['user']]
+						else:
+							user = self.handler.get_username(m['user']).lower()
+							usercache[m['user']] = user
+					elif 'username' in m:
+						user = m['username'].lower()
+					else:
+						continue
+
+					if self.training_users:
+						if user in self.training_users:
+							self.training_messages.append(m['text'])
+					elif user not in self.ignored_users:
+						self.training_messages.append(m['text'])
 			if not response['has_more']:
 				break
 			latest = response['messages'][-1]['ts']
@@ -427,28 +506,35 @@ class MarkovBot(object):
 			elif channel[0] == '@':
 				channel = self.handler.get_user_id(channel[1:])
 
-		# stolen from subreddit simulator:
-		message = ""
-		while True:
-			portion_done = len(message) / float(self.avg_comment_len)
-			continue_chance = 1.0 - portion_done
-			continue_chance = max(0, continue_chance)
-			continue_chance += 0.1
-			if random.random() > continue_chance:
+		for i in range(5): # Temporary hardcoded value, make parameter later
+
+			# stolen from subreddit simulator:
+			message = ""
+			while True:
+				portion_done = len(message) / float(self.avg_comment_len)
+				continue_chance = 1.0 - portion_done
+				continue_chance = max(0, continue_chance)
+				continue_chance += 0.1
+				if random.random() > continue_chance:
+					break
+
+				new_sentence = self.model.make_sentence(tries=self.max_tries,
+				max_overlap_total=self.max_overlap_total,
+				max_overlap_ratio=self.max_overlap_ratio)
+				if not new_sentence:
+					break
+
+				message += " " + new_sentence
+
+			message = message.strip()
+			if not self.letters.search(message):
+				print("\033[43m" + str(self) + " failed to generate message\033[0m")
+				return
+
+			if message not in self.sent_messages:
+				self.sent_messages.add(message)
 				break
 
-			new_sentence = self.model.make_sentence(tries=self.max_tries,
-			max_overlap_total=self.max_overlap_total,
-			max_overlap_ratio=self.max_overlap_ratio)
-			if not new_sentence:
-				break
-
-			message += " " + new_sentence
-
-		message = message.strip()
-		if not message:
-			print("\033[43m" + str(self) + " failed to generate message\033[0m")
-			return
 
 		if self.block_user_mentions:
 			for code in ('<!everyone>', '<!channel>', '<!here>'):
@@ -481,6 +567,23 @@ class MarkovBot(object):
 
 class MarkovBotHandler(object):
 	def __init__(self, credentials, config={}):
+		"""
+			Config properties that the handler considers:
+
+			base_path
+			test_mode
+			no_break
+			ignored_bots
+			specified_bots
+			train_threading
+
+
+			Credential tokens that can/must be defined:
+
+			slack
+			reddit_id
+			reddit_secret
+		"""
 		# set the config object
 		self.config = config
 
@@ -494,6 +597,11 @@ class MarkovBotHandler(object):
 		self.no_break = self.config.get('no_break', False)
 		self.ignored_bots = self.config.get('ignored_bots', [])
 		self.train_threading = self.config.get("train_threading", True)
+
+		self.specified_bots = self.config.get('specified_bots', [])
+		for x in range(len(self.specified_bots)):
+			if self.specified_bots[x][-1] == '/':
+				self.specified_bots[x] = self.specified_bots[x][:-1]
 		
 		if self.directory.startswith('~'):
 			path = os.path.join(os.path.expanduser('~'), self.directory)
@@ -507,6 +615,7 @@ class MarkovBotHandler(object):
 
 		user_mention_regex = r"<@U[A-Z0-9]+(|\|[a-z0-9]+)>"
 		self.user_match = re.compile(user_mention_regex)
+		self.letters = re.compile('[a-zA-Z]')
 
 		self.bots = []
 
@@ -556,16 +665,14 @@ class MarkovBotHandler(object):
 				if item in self.ignored_bots:
 					print("\033[33mIgnoring " + item + "\033[0m")
 					continue
-				if 'specified_bots' in self.config:
-					if item not in self.config['specified_bots']:
-						print("\033[33mIgnoring " + item + "\033[0m")
-						continue
+				if item not in self.specified_bots:
+					continue
 
 				bot_dir = os.path.join(self.directory, item)
 				config = {}
 				if os.path.isfile(os.path.join(bot_dir, 'config.json')):
 					config = json.load(open(os.path.join(bot_dir, 'config.json')))
-					if config.get('ignore', False) and 'specified_bots' not in self.config:
+					if config.get('ignore', False) and not self.specified_bots:
 						print("\033[33mIgnoring " + item + "\033[0m")
 						continue
 
