@@ -331,6 +331,10 @@ class MarkovBot(object):
 		self.model = TextModel("\n".join(self.training_messages), state_size=self.state_size)
 		self.last_trained = time.time()
 		return self.model
+	
+	def add_training_message(self, message):
+		if message.count(' ') > self.state_size:
+			self.training_messages.append(message)
 
 	def train_from_channel(self, channel):
 		latest = time.time()
@@ -362,9 +366,9 @@ class MarkovBot(object):
 
 					if self.training_users:
 						if user in self.training_users:
-							self.training_messages.append(m['text'])
+							self.add_training_message(m['text'])
 					elif user not in self.ignored_users:
-						self.training_messages.append(m['text'])
+						self.add_training_message(m['text'])
 			if not response['has_more']:
 				break
 			latest = response['messages'][-1]['ts']
@@ -376,7 +380,7 @@ class MarkovBot(object):
 		for line in lines:
 			l = line.strip()
 			if l:
-				self.training_messages.append(l)
+				self.add_training_message(l)
 
 	def train_from_reddit(self, config, subreddit_name=None):
 		if not self.reddit_session:
@@ -416,15 +420,15 @@ class MarkovBot(object):
 			author = (sub.author.name if sub.author else '[deleted]')
 			print("\033[35mSubmission by " + author + ":\033[0m " + sub.title)
 			if config['title_train']:
-				self.training_messages.append(sub.title)
+				self.add_training_message(sub.title)
 			if config['self_train']:
 				if sub.is_self:
 					for line in sub.selftext.splitlines():
 						l = line.strip()
 						if l:
-							self.training_messages.append(l)
+							self.add_training_message(l)
 			elif config['link_train']:
-				self.training_messages.append(sub.url)
+				self.add_training_message(sub.url)
 
 			if config['comment_train']:
 				sub.comments.replace_more()
@@ -433,7 +437,7 @@ class MarkovBot(object):
 					for line in comment.body.splitlines():
 						l = line.strip()
 						if l:
-							self.training_messages.append(l)
+							self.add_training_message(l)
 
 		if self.train_threading:
 			self.thread_done += 1
@@ -456,7 +460,7 @@ class MarkovBot(object):
 		print("\033[44mArticle: " + page.title + "\033[0m")
 		for line in page.content.splitlines():
 			if line.split() and not line.startswith('=='):
-				self.training_messages.append(line)
+				self.add_training_message(line)
 
 		if self.train_threading:
 			self.thread_done += 1
@@ -484,7 +488,7 @@ class MarkovBot(object):
 			print("\033[35mArticle: \033[0m" + page.title)
 			for line in page.content.splitlines():
 				if line.split() and not line.startswith('=='):
-					self.training_messages.append(line)
+					self.add_training_message(line)
 
 		else:
 			if self.train_threading:
@@ -527,7 +531,7 @@ class MarkovBot(object):
 				message += " " + new_sentence
 
 			message = message.strip()
-			if not self.letters.search(message):
+			if not self.handler.letters.search(message):
 				print("\033[43m" + str(self) + " failed to generate message\033[0m")
 				return
 
