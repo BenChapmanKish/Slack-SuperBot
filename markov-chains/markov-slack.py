@@ -639,7 +639,12 @@ class MarkovBotHandler(object):
 	def api_call(self, method, kwargs={}):
 		if method is not None:
 			response = self.slack_client.server.api_call(method, **kwargs)
-			return json.loads(response)
+			# Check for the json-breaking text that tells you to relax when you're sending too many requests
+			if "You are sending too many requests." in response[response.rfind('}')+1:]:
+				print("\033[31mSending too many requests. Stopping bot.\033[0m")
+				sys.exit(1)
+			else:
+				return json.loads(response)
 
 
 	def get_username(self, user_id):
