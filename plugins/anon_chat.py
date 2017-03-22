@@ -31,6 +31,7 @@ class AnonChat(object):
 		self.anon_chat = '#anon-chat'
 		self.anon_chat_code = '<#'+self.sb.slack_client.server.channels.find(self.anon_chat).id+'>'
 		self.regen_time = 20*60 # 20 minutes
+		self.min_regen_wait = 30 # 30 seconds
 		self.hash_cutoff = 6
 
 		self.help_message = "*SuperBot anonymous chat plugin*\nAvailable commands are:\n" + \
@@ -43,8 +44,8 @@ class AnonChat(object):
 		self.users = {}
 
 	def __repr__(self):
-		return "AnonChat(send_commands={}, regen_commands={}, identify_commands={}, help_commands={}, anon_chat='{}', hash_cutoff={}, regen_time={}, self.users={})"\
-			.format(self.send_commands, self.regen_commands, self.identify_commands, self.help_commands, self.anon_chat, self.hash_cutoff, self.regen_time, self.users)
+		return "AnonChat(anon_chat='{}', hash_cutoff={}, regen_time={}, self.users={})"\
+			.format(self.anon_chat, self.hash_cutoff, self.regen_time, self.users)
 	__str__ = __repr__
 
 	def handle_event(self, data):
@@ -61,16 +62,16 @@ class AnonChat(object):
 				body = text[text.index(' ')+1:]
 			else:
 				command = text.lower()
-				body = None
+				body = ""
 
 			if command not in self.commands:
 				return
 
 			username = self.sb.get_username(data['user'])
-			self.sb.log("User \033[32m{}\033[0m issued command \033[35m{}\033[0m".format(username, command))
+			self.sb.log("User \033[32m{}\033[0m issued command \033[35m{}\033[0m  :  \033[34m{}\033[0m".format(username, command, body))
 			
 
-			if command in self.send_commands and isinstance(body, str):
+			if command in self.send_commands and len(body) > 0:
 				name = self.get_unique_identifier(data['user'])
 
 				#attachment = json.dumps([{
@@ -83,6 +84,12 @@ class AnonChat(object):
 				self.sb.api_call('chat.postMessage', kwargs)
 
 			elif command in self.regen_commands:
+				if data['user'] in self.users:
+					lastTime = self.users[data['user']][0]
+					waitTime = lastTime + self.min_regen_wait - time.time()
+					if waitTime > 0:
+						self.sb.send_message(data['channel'], "Tried regenerating ID too soon. Please wait %d seconds." % waitTime)
+						return
 				name = self.generate_identifier(data['user'], body.lower())
 				if name:
 					message = "New anonymous ID for <@" + data['user'] + "> is *" + name + "*"
@@ -119,6 +126,8 @@ class AnonChat(object):
 		# Get a random name too just cause
 		random.seed(m.digest())
 		
+		name = None
+		
 		if name_type in ('male', 'female'):
 			name = names.get_first_name(gender=name_type)
 		elif name_type == 'last':
@@ -127,6 +136,11 @@ class AnonChat(object):
 			name = names.get_first_name()
 		else:
 			return
+
+		# If this name is taken, recursively regenerate it
+		for userdata in self.users.values():
+			if name == userdata[1]:
+				return self.generate_identifier(userID, name_type)
 
 		self.users[userID] = (now, name)
 		return name
