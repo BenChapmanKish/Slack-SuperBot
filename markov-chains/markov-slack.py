@@ -14,6 +14,8 @@ import re
 from slackclient import SlackClient
 sys.dont_write_bytecode = True
 
+RATE_LIMIT = 0.5
+
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
 class TextModel(markovify.Text):
@@ -222,8 +224,7 @@ class MarkovBot(object):
 
 		if "train_channels" in self.config:
 			if self.config["train_channels"] == "all":
-				channels = self.api_call('channels.list')['channels']
-				for channel in channels:
+				for channel in self.handler.channels_list:
 					if "train_channels_ignore" in self.config:
 						if '#'+channel['name'] in self.config['train_channels_ignore']:
 							continue
@@ -621,6 +622,11 @@ class MarkovBotHandler(object):
 		self.user_match = re.compile(user_mention_regex)
 		self.letters = re.compile('[a-zA-Z]')
 
+
+		self.users_list = None
+		self.channels_list = None
+	
+
 		self.bots = []
 
 
@@ -628,6 +634,9 @@ class MarkovBotHandler(object):
 		"""Convenience method that creates Server instance"""
 		self.slack_client = SlackClient(self.token)
 		self.slack_client.rtm_connect()
+
+		self.users_list = self.api_call('users.list')['members']
+		self.channels_list = self.api_call('channels.list')['channels']
 
 	def send_message(self, channel, message=None):
 		channel = self.slack_client.server.channels.find(channel)
@@ -638,32 +647,34 @@ class MarkovBotHandler(object):
 
 	def api_call(self, method, kwargs={}):
 		if method is not None:
+			print("\033[36mCalling method " + method + ": " + str(kwargs) + "\033[0m")
 			response = self.slack_client.server.api_call(method, **kwargs)
 			# Check for the json-breaking text that tells you to relax when you're sending too many requests
 			if "You are sending too many requests." in response[response.rfind('}')+1:]:
 				print("\033[31mSending too many requests. Stopping bot.\033[0m")
 				sys.exit(1)
 			else:
+				time.sleep(RATE_LIMIT)
 				return json.loads(response)
 
 
 	def get_username(self, user_id):
-		for member in self.api_call('users.list')['members']:
+		for member in self.users_list:
 			if member['id'] == user_id.upper():
 				return member['name']
 
 	def get_user_id(self, username):
-		for member in self.api_call('users.list')['members']:
+		for member in self.users_list:
 			if member['name'].lower() == username.lower():
 				return member['id']
 
 	def get_channel(self, channel_id):
-		for channel in self.api_call('channels.list')['channels']:
+		for channel in self.channels_list:
 			if channel['id'] == channel_id.upper():
 				return channel['name']
 
 	def get_channel_id(self, channel_name):
-		for channel in self.api_call('channels.list')['channels']:
+		for channel in self.channels_list:
 			if channel['name'].lower() == channel_name.lower():
 				return channel['id']
 
